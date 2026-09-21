@@ -89,8 +89,11 @@ data — never trusted from the client:
 
 Every API route calls one of `requireSessionUser`, `requireOrgAccess`,
 `requireProjectAccess`, `requireBoqAccess`, `requireRfqAccess`,
-`requireSupplierAccess`, or `requireQuotationProjectAccess` before touching
-the database. These throw `ApiError(401|403|404, message)`, which
+`requireSupplierAccess`, `requireQuotationProjectAccess`,
+`requirePurchaseOrderAccess`, or `requireContractAccess` before touching
+the database — each of the latter resolves up to the owning project and
+delegates to `requireProjectAccess` rather than re-implementing access
+logic. These throw `ApiError(401|403|404, message)`, which
 `handleApiError` turns into a safe JSON response — routes never leak
 Prisma error internals to the client (see `SECURITY.md`).
 
@@ -105,9 +108,29 @@ All monetary values are Postgres `numeric` (via Prisma `Decimal`), never
 `Float`. All money math — BOQ line totals, quotation subtotals/totals — goes
 through `multiplyDecimal` / `sumDecimal`, which wrap `Prisma.Decimal`. API
 routes **recompute** totals server-side from quantity × unit price on every
-write; a client-submitted total is never trusted or stored directly. See
-`src/lib/money.test.ts` for the exactness tests (including the classic
-`0.1 + 0.2` float-precision case).
+write; a client-submitted total is never trusted or stored directly. A
+purchase order is the one place a total is *copied* rather than recomputed
+— it's created from an already-server-computed, `ACCEPTED` quotation, and
+copying (not re-deriving) is what keeps the PO an accurate snapshot of what
+was actually accepted. See `src/lib/money.test.ts` for the exactness tests
+(including the classic `0.1 + 0.2` float-precision case) and the PO/contract
+status-transition tests in `src/lib/validations/*.test.ts`.
+
+## Status transition architecture
+
+Purchase orders and contracts add a pattern the earlier modules didn't need:
+a **closed, forward-only status transition table** —
+`PO_STATUS_TRANSITIONS` / `CONTRACT_STATUS_TRANSITIONS` in
+`src/lib/validations/purchase-order.ts` / `contract.ts` — mapping each
+status to the set of statuses it may legally move to next (e.g. a `DRAFT`
+PO may become `ISSUED` or `CANCELLED`, never jump straight to `COMPLETED`).
+The `PATCH` routes for both resources check the requested status against
+this table before writing, returning `400` on an illegal transition. This
+is the same idea as `RfqStatus`/`QuotationStatus` already being closed
+enums, taken one step further: not just *which* values are valid, but
+*which changes between them* are valid. The next state-machine-shaped
+module (e.g. `Delivery`, `Invoice`) should follow the same pattern rather
+than validating transitions ad hoc in the route handler.
 
 ## API architecture
 
@@ -123,10 +146,15 @@ list):
 /api/projects/[projectId]
 /api/projects/[projectId]/boqs
 /api/projects/[projectId]/rfqs
+/api/projects/[projectId]/contracts
 /api/boqs/[boqId]/sections
 /api/boqs/[boqId]/items
 /api/rfqs/[rfqId]/suppliers
 /api/rfqs/[rfqId]/quotations
+/api/quotations/[quotationId]/purchase-order
+/api/purchase-orders/[purchaseOrderId]
+/api/contracts/[contractId]
+/api/contracts/[contractId]/parties
 /api/quotations/[quotationId]
 /api/catalog/{categories,units,products}
 /api/suppliers/[supplierId]/products

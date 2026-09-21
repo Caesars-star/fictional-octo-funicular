@@ -56,6 +56,8 @@ model User {
   createdBoqs       Boq[]
   createdRfqs       Rfq[]
   passwordResetTokens PasswordResetToken[]
+  createdPurchaseOrders PurchaseOrder[]
+  createdContracts  Contract[]
 
   @@index([role])
 }
@@ -107,6 +109,7 @@ model Organization {
   supplier    Supplier?
   contractor  Contractor?
   documents   Document[]
+  contractParties ContractParty[]
 
   @@index([type])
 }
@@ -189,6 +192,8 @@ model Project {
   documents Document[]
   boqs      Boq[]
   rfqs      Rfq[]
+  purchaseOrders PurchaseOrder[]
+  contracts Contract[]
 
   @@index([organizationId])
   @@index([status])
@@ -283,6 +288,8 @@ model Document {
   project        Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   organizationId String?
   organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contractId     String?
+  contract       Contract?      @relation(fields: [contractId], references: [id], onDelete: Cascade)
   type           DocumentType
   fileName       String
   fileUrl        String
@@ -296,6 +303,7 @@ model Document {
 
   @@index([projectId])
   @@index([organizationId])
+  @@index([contractId])
 }
 
 // ---------------------------------------------------------------------------
@@ -439,6 +447,7 @@ model Supplier {
   boqItems     BoqItem[]
   rfqSuppliers RfqSupplier[]
   quotations   Quotation[]
+  purchaseOrders PurchaseOrder[]
 }
 
 model SupplierProduct {
@@ -570,6 +579,7 @@ model Quotation {
   updatedAt    DateTime        @updatedAt
 
   items QuotationItem[]
+  purchaseOrder PurchaseOrder?
 
   @@unique([rfqId, supplierId])
   @@index([rfqId])
@@ -589,8 +599,135 @@ model QuotationItem {
   lineTotal   Decimal   @db.Decimal(16, 2)
   createdAt   DateTime  @default(now())
 
+  purchaseOrderItems PurchaseOrderItem[]
+
   @@index([quotationId])
   @@index([rfqItemId])
+}
+
+// ---------------------------------------------------------------------------
+// PURCHASE ORDERS
+// (Created from an ACCEPTED quotation — see requireQuotationProjectAccess /
+// the POST /api/quotations/:id/purchase-order route. One PO per quotation.)
+// ---------------------------------------------------------------------------
+
+enum PoStatus {
+  DRAFT
+  ISSUED
+  ACCEPTED
+  PARTIALLY_DELIVERED
+  COMPLETED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id                  String    @id @default(cuid())
+  projectId           String
+  project             Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quotationId         String    @unique
+  quotation           Quotation @relation(fields: [quotationId], references: [id])
+  supplierId          String
+  supplier            Supplier  @relation(fields: [supplierId], references: [id])
+  poNumber            String
+  status              PoStatus  @default(DRAFT)
+  issueDate           DateTime?
+  expectedDeliveryDate DateTime?
+  terms               String?
+  deliveryCost        Decimal   @db.Decimal(14, 2) @default(0)
+  taxAmount           Decimal   @db.Decimal(14, 2) @default(0)
+  subtotal            Decimal   @db.Decimal(16, 2)
+  total               Decimal   @db.Decimal(16, 2)
+  createdById         String
+  createdBy           User      @relation(fields: [createdById], references: [id])
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  items PurchaseOrderItem[]
+
+  @@unique([projectId, poNumber])
+  @@index([projectId])
+  @@index([supplierId])
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id              String         @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  quotationItemId String?
+  quotationItem   QuotationItem? @relation(fields: [quotationItemId], references: [id])
+  description     String
+  quantity        Decimal        @db.Decimal(14, 3)
+  unit            String
+  unitPrice       Decimal        @db.Decimal(14, 2)
+  lineTotal       Decimal        @db.Decimal(16, 2)
+  createdAt       DateTime       @default(now())
+
+  @@index([purchaseOrderId])
+}
+
+// ---------------------------------------------------------------------------
+// CONTRACTS
+// ---------------------------------------------------------------------------
+
+enum ContractType {
+  SUPPLY
+  SERVICE
+  CONSTRUCTION
+  CONSULTING
+  OTHER
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  TERMINATED
+  CANCELLED
+}
+
+model Contract {
+  id           String         @id @default(cuid())
+  projectId    String
+  project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title        String
+  contractType ContractType
+  value        Decimal?       @db.Decimal(16, 2)
+  startDate    DateTime?
+  endDate      DateTime?
+  obligations  String?
+  status       ContractStatus @default(DRAFT)
+  createdById  String
+  createdBy    User           @relation(fields: [createdById], references: [id])
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  parties   ContractParty[]
+  documents Document[]
+
+  @@index([projectId])
+  @@index([status])
+}
+
+enum ContractPartyRole {
+  CLIENT
+  CONTRACTOR
+  SUPPLIER
+  CONSULTANT
+  OTHER
+}
+
+model ContractParty {
+  id             String            @id @default(cuid())
+  contractId     String
+  contract       Contract          @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           ContractPartyRole
+  createdAt      DateTime          @default(now())
+
+  @@unique([contractId, organizationId])
+  @@index([organizationId])
 }
 
 // ---------------------------------------------------------------------------

@@ -135,6 +135,36 @@ export async function requireRfqAccess(
   return rfq;
 }
 
+/** Resolves a PurchaseOrder's project and applies the same access rules as requireProjectAccess. */
+export async function requirePurchaseOrderAccess(
+  user: SessionUser,
+  purchaseOrderId: string,
+  opts: { minProjectRole?: ProjectMemberRole } = {},
+) {
+  const po = await prisma.purchaseOrder.findUnique({
+    where: { id: purchaseOrderId },
+    select: { projectId: true },
+  });
+  if (!po) throw new ApiError(404, "Purchase order not found.");
+  await requireProjectAccess(user, po.projectId, opts);
+  return po;
+}
+
+/** Resolves a Contract's project and applies the same access rules as requireProjectAccess. */
+export async function requireContractAccess(
+  user: SessionUser,
+  contractId: string,
+  opts: { minProjectRole?: ProjectMemberRole } = {},
+) {
+  const contract = await prisma.contract.findUnique({
+    where: { id: contractId },
+    select: { projectId: true },
+  });
+  if (!contract) throw new ApiError(404, "Contract not found.");
+  await requireProjectAccess(user, contract.projectId, opts);
+  return contract;
+}
+
 /** Resolves a Quotation's project and applies the same access rules as requireProjectAccess. */
 export async function requireQuotationProjectAccess(
   user: SessionUser,

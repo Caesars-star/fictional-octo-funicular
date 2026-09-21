@@ -462,7 +462,7 @@ async function main() {
       const subtotal = lineItems.reduce((sum, li) => sum + Number(li.lineTotal), 0);
       const total = subtotal + deliveryCost + taxAmount;
 
-      await prisma.quotation.create({
+      return prisma.quotation.create({
         data: {
           rfqId: rfq.id,
           supplierId,
@@ -476,6 +476,7 @@ async function main() {
           submittedAt: new Date(),
           items: { create: lineItems },
         },
+        include: { items: true },
       });
     }
 
@@ -492,7 +493,7 @@ async function main() {
       "Delivery within 2 days of order confirmation.",
     );
 
-    await createQuotation(
+    const hardwareQuotation = await createQuotation(
       hardwareSupplier.id,
       {
         "Portland Cement 50kg": 870,
@@ -504,6 +505,72 @@ async function main() {
       13098,
       "Bulk discount applied. Same-day delivery available within Kiambu County.",
     );
+
+    // ---------------------------------------------------------------------
+    // Award the lower-total quotation and issue a purchase order from it,
+    // demonstrating the ACCEPTED quotation -> PurchaseOrder chain.
+    // ---------------------------------------------------------------------
+    const acceptedQuotation = await prisma.quotation.update({
+      where: { id: hardwareQuotation.id },
+      data: { status: "ACCEPTED" },
+    });
+    await prisma.rfq.update({ where: { id: rfq.id }, data: { status: "AWARDED" } });
+    await prisma.boqItem.updateMany({
+      where: { id: { in: [cementItem.id, steelItem.id, ballastItem.id, sandItem.id] } },
+      data: { procurementStatus: "ORDERED" },
+    });
+
+    await prisma.purchaseOrder.create({
+      data: {
+        projectId: project.id,
+        quotationId: acceptedQuotation.id,
+        supplierId: hardwareSupplier.id,
+        poNumber: "PO-0001",
+        status: "ISSUED",
+        issueDate: new Date("2026-09-10"),
+        expectedDeliveryDate: new Date("2026-09-20"),
+        terms: "Payment due within 30 days of delivery. Bulk discount applied per quotation.",
+        deliveryCost: acceptedQuotation.deliveryCost,
+        taxAmount: acceptedQuotation.taxAmount,
+        subtotal: acceptedQuotation.subtotal,
+        total: acceptedQuotation.total,
+        createdById: pmUser.id,
+        items: {
+          create: hardwareQuotation.items.map((item) => ({
+            quotationItemId: item.id,
+            description: item.description,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitPrice: item.unitPrice,
+            lineTotal: item.lineTotal,
+          })),
+        },
+      },
+    });
+
+    // -------------------------------------------------------------------
+    // A general contractor agreement for the project's construction works.
+    // -------------------------------------------------------------------
+    const contract = await prisma.contract.create({
+      data: {
+        projectId: project.id,
+        title: "General Contractor Agreement — Phase 1",
+        contractType: "CONSTRUCTION",
+        value: money(28_000_000),
+        startDate: new Date("2026-03-15"),
+        endDate: new Date("2027-05-31"),
+        obligations:
+          "Contractor to deliver foundation, superstructure, roofing and finishing works per the approved BOQ and drawings, subject to TARA Demo Development Ltd's supervision and sign-off at each milestone.",
+        status: "ACTIVE",
+        createdById: developerUser.id,
+      },
+    });
+    await prisma.contractParty.createMany({
+      data: [
+        { contractId: contract.id, organizationId: developerOrg.id, role: "CLIENT" },
+        { contractId: contract.id, organizationId: generalContractorOrg.id, role: "CONTRACTOR" },
+      ],
+    });
   }
 
   console.log("\nSeed complete.");

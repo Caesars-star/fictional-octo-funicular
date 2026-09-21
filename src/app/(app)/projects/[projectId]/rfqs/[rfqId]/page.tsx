@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
@@ -5,6 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { InviteSuppliersDialog } from "@/components/rfq/invite-suppliers-dialog";
 import { QuotationDecisionButtons } from "@/components/rfq/quotation-decision-buttons";
+import { CreatePurchaseOrderButton } from "@/components/purchase-orders/create-purchase-order-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn, formatMoney, formatQuantity } from "@/lib/utils";
@@ -25,6 +27,7 @@ export default async function RfqDetailPage({
         include: {
           supplier: { include: { organization: true } },
           items: true,
+          purchaseOrder: { select: { id: true, poNumber: true } },
         },
       },
     },
@@ -171,6 +174,17 @@ export default async function RfqDetailPage({
                           rfq.status !== "CANCELLED" && (
                             <QuotationDecisionButtons quotationId={q.id} />
                           )}
+                        {q.status === "ACCEPTED" &&
+                          (q.purchaseOrder ? (
+                            <Link
+                              href={`/projects/${projectId}/purchase-orders/${q.purchaseOrder.id}`}
+                              className="text-sm font-medium text-primary hover:underline"
+                            >
+                              {q.purchaseOrder.poNumber} →
+                            </Link>
+                          ) : (
+                            <CreatePurchaseOrderButton quotationId={q.id} projectId={projectId} />
+                          ))}
                       </div>
                     </TableCell>
                   ))}

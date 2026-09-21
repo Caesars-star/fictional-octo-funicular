@@ -67,6 +67,21 @@ never a raw stack trace or database error (see `src/lib/api-error.ts`).
 | `POST` | `/api/rfqs/:rfqId/quotations` | invited supplier org member | Upsert the caller's quotation (draft or `submit: true`). Line totals, subtotal and total are always computed server-side from `quantity × unitPrice`. |
 | `PATCH` | `/api/quotations/:id` | project `MANAGER`+ | Accept or reject a quotation. Accepting sets `Rfq.status = AWARDED` and the underlying BOQ items' `procurementStatus = ORDERED`. |
 
+## Purchase orders
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/quotations/:quotationId/purchase-order` | project `MANAGER`+ | Create a purchase order from an `ACCEPTED` quotation — copies its line items and totals. One PO per quotation; fails `409` if one already exists, `400` if the quotation isn't accepted yet. |
+| `PATCH` | `/api/purchase-orders/:id` | project `MANAGER`+ | Update `status` (validated against a closed forward-only transition table — see `DATABASE.md`), `expectedDeliveryDate`, or `terms`. Setting `status: "ISSUED"` stamps `issueDate` if unset. |
+
+## Contracts
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/projects/:projectId/contracts` | project `MANAGER`+ | Create a contract (+ optional initial parties). |
+| `PATCH` | `/api/contracts/:id` | project `MANAGER`+ | Update fields and/or `status` (validated against a closed forward-only transition table). |
+| `POST` | `/api/contracts/:id/parties` | project `MANAGER`+ | Add (or update the role of) a party organization on the contract. |
+
 ## Example: creating an RFQ
 
 ```http
@@ -104,3 +119,51 @@ Content-Type: application/json
 
 `unitPrice` values are strings to preserve decimal precision over the wire;
 the server parses and stores them as Postgres `numeric` via Prisma `Decimal`.
+
+## Example: creating a purchase order from an accepted quotation
+
+```http
+POST /api/quotations/clx_quotation_1/purchase-order
+Content-Type: application/json
+
+{
+  "expectedDeliveryDate": "2026-09-20",
+  "terms": "Payment due within 30 days of delivery."
+}
+```
+
+The quotation must already be `ACCEPTED` (via `PATCH /api/quotations/:id`).
+The response's `purchaseOrder` includes a project-scoped, sequential
+`poNumber` (`PO-0001`, `PO-0002`, …) and the copied line items.
+
+## Example: advancing a purchase order's status
+
+```http
+PATCH /api/purchase-orders/clx_po_1
+Content-Type: application/json
+
+{ "status": "ISSUED" }
+```
+
+Returns `400` if `status` isn't a legal next step from the PO's current
+status (see the transition table in `DATABASE.md`).
+
+## Example: creating a contract
+
+```http
+POST /api/projects/clx.../contracts
+Content-Type: application/json
+
+{
+  "title": "General Contractor Agreement — Phase 1",
+  "contractType": "CONSTRUCTION",
+  "value": "28000000",
+  "startDate": "2026-03-15",
+  "endDate": "2027-05-31",
+  "obligations": "Contractor to deliver foundation, superstructure, roofing and finishing works per the approved BOQ.",
+  "parties": [
+    { "organizationId": "clx_org_developer", "role": "CLIENT" },
+    { "organizationId": "clx_org_contractor", "role": "CONTRACTOR" }
+  ]
+}
+```

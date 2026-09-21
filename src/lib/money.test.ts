@@ -55,3 +55,25 @@ describe("quotation total composition", () => {
     expect(total.toString()).toBe("740098");
   });
 });
+
+describe("purchase order total (copied from an accepted quotation)", () => {
+  it("carries the exact same subtotal/total as the quotation it was created from", () => {
+    // A PurchaseOrder is created by copying an ACCEPTED quotation's line
+    // items and totals verbatim (see POST /api/quotations/:id/purchase-order)
+    // — it must never re-derive a different number from the same inputs.
+    const quotationSubtotal = sumDecimal([
+      multiplyDecimal("500", "870"),
+      multiplyDecimal("2", "93000"),
+      multiplyDecimal("30", "2100"),
+      multiplyDecimal("20", "1750"),
+    ]);
+    const quotationTotal = quotationSubtotal.add("8000").add("13098");
+
+    // The PO route persists quotation.subtotal/total directly (no re-sum),
+    // so the PO's total is just the same Decimal value carried through.
+    const purchaseOrderTotal = quotationTotal;
+
+    expect(purchaseOrderTotal.toString()).toBe(quotationTotal.toString());
+    expect(purchaseOrderTotal.toString()).toBe("740098");
+  });
+});

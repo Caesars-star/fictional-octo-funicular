@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate, formatMoney, titleCase } from "@/lib/utils";
+import { sumDecimal } from "@/lib/money";
 
 export default async function ProjectOverviewPage({
   params,
@@ -10,15 +11,21 @@ export default async function ProjectOverviewPage({
 }) {
   const { projectId } = await params;
 
-  const [project, boqCount, rfqCount, quotationCount] = await Promise.all([
+  const [project, boqCount, rfqCount, purchaseOrders, contractCount] = await Promise.all([
     prisma.project.findUniqueOrThrow({
       where: { id: projectId },
       include: { site: true },
     }),
     prisma.boq.count({ where: { projectId } }),
     prisma.rfq.count({ where: { projectId } }),
-    prisma.quotation.count({ where: { rfq: { projectId } } }),
+    prisma.purchaseOrder.findMany({
+      where: { projectId, status: { notIn: ["CANCELLED"] } },
+      select: { total: true },
+    }),
+    prisma.contract.count({ where: { projectId } }),
   ]);
+
+  const committedCost = sumDecimal(purchaseOrders.map((po) => po.total));
 
   const stats = [
     { label: "Estimated project value", value: formatMoney(project.estimatedProjectValue?.toString()) },
@@ -26,14 +33,15 @@ export default async function ProjectOverviewPage({
       label: "Estimated construction cost",
       value: formatMoney(project.estimatedConstructionCost?.toString()),
     },
+    { label: "Committed cost (POs)", value: formatMoney(committedCost.toString()) },
     { label: "BOQs", value: boqCount },
     { label: "RFQs", value: rfqCount },
-    { label: "Quotations received", value: quotationCount },
+    { label: "Contracts", value: contractCount },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {stats.map((stat) => (
           <Card key={stat.label}>
             <CardContent className="p-4">

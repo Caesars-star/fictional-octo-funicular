@@ -5,16 +5,18 @@ coordinates projects, BOQs, procurement, suppliers, contractors, contracts and
 (in later phases) payments and financing across the construction value chain,
 turning each transaction into structured, traceable data.
 
-This repository is the **TARA Construction Transaction OS MVP**: the first
-slice of the platform, covering the workflow
+This repository is the **TARA Construction Transaction OS MVP**, covering
+the workflow
 
 ```
 AUTH → ORGANIZATION → PROJECT → BOQ → MATERIAL CATALOG → RFQ → SUPPLIER QUOTATION → COMPARISON
+                                                                          ↓
+                                                        ACCEPT → PURCHASE ORDER
+                                                        (+ CONTRACTS, independently, per project)
 ```
 
 See [ROADMAP.md](./ROADMAP.md) for what's deliberately out of scope for now
-(purchase orders, contracts, deliveries, invoices, payments, financing, GIS,
-AI) and why.
+(deliveries, invoices, payments, financing, GIS, AI) and why.
 
 ## Stack
 
@@ -56,8 +58,10 @@ Full details, including how to run without Docker, are in
 
 `npm run db:seed` creates a demo organization ("TARA Demo Development Ltd"),
 a demo project ("Thika Residential Development — Demo Project") with a BOQ,
-and an RFQ with two supplier quotations ready to compare. All seeded accounts
-share the password `TaraDemo2026!`:
+an RFQ with two supplier quotations ready to compare, one of them accepted
+with a purchase order (`PO-0001`) issued from it, and a sample general
+contractor agreement. All seeded accounts share the password
+`TaraDemo2026!`:
 
 | Email | Role |
 | --- | --- |
