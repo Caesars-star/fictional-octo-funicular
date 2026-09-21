@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f8f7;
+  --foreground: #14201c;
+
+  --card: #ffffff;
+  --card-foreground: #14201c;
+
+  --popover: #ffffff;
+  --popover-foreground: #14201c;
+
+  /* TARA deep green — construction/infrastructure, not fintech-blue or crypto-purple */
+  --primary: #0f4d3c;
+  --primary-foreground: #f7fbf9;
+
+  --secondary: #e9ede9;
+  --secondary-foreground: #14201c;
+
+  --muted: #eef1ee;
+  --muted-foreground: #5b6b62;
+
+  --accent: #e3ede8;
+  --accent-foreground: #0f4d3c;
+
+  --destructive: #b3261e;
+  --destructive-foreground: #fef6f5;
+
+  --border: #dfe4de;
+  --input: #dfe4de;
+  --ring: #0f4d3c;
+
+  --radius: 0.5rem;
+}
+
+:root[data-theme="dark"] {
+  --background: #0c1310;
+  --foreground: #eef1ee;
+
+  --card: #101a16;
+  --card-foreground: #eef1ee;
+
+  --popover: #101a16;
+  --popover-foreground: #eef1ee;
+
+  --primary: #3fae87;
+  --primary-foreground: #0a1512;
+
+  --secondary: #182420;
+  --secondary-foreground: #eef1ee;
+
+  --muted: #182420;
+  --muted-foreground: #92a39a;
+
+  --accent: #182420;
+  --accent-foreground: #3fae87;
+
+  --destructive: #e5544a;
+  --destructive-foreground: #1a0d0c;
+
+  --border: #223129;
+  --input: #223129;
+  --ring: #3fae87;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+* {
+  border-color: var(--border);
+}

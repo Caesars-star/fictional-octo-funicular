@@ -1,0 +1,613 @@
+// TARA Construction Transaction OS — database schema
+// Money fields use Decimal (Postgres numeric), never Float, per TARA financial-integrity requirements.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// IDENTITY
+// ---------------------------------------------------------------------------
+
+/// Platform-wide persona. Governs which dashboard/module a user primarily
+/// operates in. Distinct from OrganizationMembership.role, which governs
+/// what a user may do *within a specific organization*.
+enum UserRole {
+  PLATFORM_ADMIN
+  ORGANIZATION_ADMIN
+  DEVELOPER
+  PROJECT_MANAGER
+  SUPPLIER
+  CONTRACTOR
+  CONSULTANT
+  AGENT
+  FINANCE_PARTNER
+  HOMEOWNER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  phone        String?
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  memberships       OrganizationMembership[]
+  projectMemberships ProjectMember[]
+  createdProjects   Project[]                @relation("ProjectCreatedBy")
+  uploadedDocuments Document[]
+  auditLogs         AuditLog[]
+  createdBoqs       Boq[]
+  createdRfqs       Rfq[]
+  passwordResetTokens PasswordResetToken[]
+
+  @@index([role])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum OrganizationType {
+  DEVELOPER
+  SUPPLIER
+  CONTRACTOR
+  CONSULTANT
+  AGENT_NETWORK
+  PLATFORM
+  OTHER
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model Organization {
+  id                 String              @id @default(cuid())
+  name               String
+  type               OrganizationType
+  description        String?
+  registrationNumber String?
+  phone              String?
+  email              String?
+  address            String?
+  verificationStatus VerificationStatus  @default(UNVERIFIED)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  memberships OrganizationMembership[]
+  projects    Project[]
+  supplier    Supplier?
+  contractor  Contractor?
+  documents   Document[]
+
+  @@index([type])
+}
+
+enum OrgMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  REMOVED
+}
+
+model OrganizationMembership {
+  id             String            @id @default(cuid())
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           OrgMemberRole     @default(MEMBER)
+  status         MembershipStatus  @default(ACTIVE)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// PROJECTS
+// ---------------------------------------------------------------------------
+
+enum ProjectType {
+  RESIDENTIAL
+  COMMERCIAL
+  INDUSTRIAL
+  INFRASTRUCTURE
+  MIXED_USE
+  OTHER
+}
+
+enum ProjectStatus {
+  CONCEPT
+  FEASIBILITY
+  PLANNING
+  PROCUREMENT
+  CONSTRUCTION
+  COMPLETION
+  OPERATIONAL
+  SUSPENDED
+  CANCELLED
+}
+
+model Project {
+  id                        String        @id @default(cuid())
+  organizationId             String
+  organization                Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name                       String
+  type                       ProjectType
+  description                String?
+  location                   String?
+  latitude                   Decimal?      @db.Decimal(9, 6)
+  longitude                  Decimal?      @db.Decimal(9, 6)
+  landReference              String?
+  estimatedProjectValue      Decimal?      @db.Decimal(16, 2)
+  estimatedConstructionCost  Decimal?      @db.Decimal(16, 2)
+  startDate                  DateTime?
+  expectedCompletion         DateTime?
+  status                     ProjectStatus @default(CONCEPT)
+  createdById                String
+  createdBy                  User          @relation("ProjectCreatedBy", fields: [createdById], references: [id])
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+
+  members   ProjectMember[]
+  site      Site?
+  documents Document[]
+  boqs      Boq[]
+  rfqs      Rfq[]
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+enum ProjectMemberRole {
+  OWNER
+  MANAGER
+  MEMBER
+  VIEWER
+}
+
+model ProjectMember {
+  id        String            @id @default(cuid())
+  projectId String
+  project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      ProjectMemberRole @default(MEMBER)
+  createdAt DateTime          @default(now())
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// SITE / LAND (kept intentionally simple; future GIS integration hangs off
+// the latitude/longitude + parcelReference fields already present here).
+// ---------------------------------------------------------------------------
+
+enum TenureType {
+  FREEHOLD
+  LEASEHOLD
+  COMMUNITY
+  UNKNOWN
+}
+
+enum PlanningStatus {
+  NOT_APPLIED
+  APPLIED
+  APPROVED
+  REJECTED
+}
+
+model Site {
+  id               String          @id @default(cuid())
+  projectId        String          @unique
+  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parcelReference  String?
+  location         String?
+  latitude         Decimal?        @db.Decimal(9, 6)
+  longitude        Decimal?        @db.Decimal(9, 6)
+  areaValue        Decimal?        @db.Decimal(12, 2)
+  areaUnit         String?
+  tenureType       TenureType      @default(UNKNOWN)
+  ownershipInfo    String?
+  planningStatus   PlanningStatus  @default(NOT_APPLIED)
+  developmentNotes String?
+  constraints      String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// DOCUMENTS
+// ---------------------------------------------------------------------------
+
+enum DocumentType {
+  TITLE_DEED
+  CONTRACT
+  BOQ
+  QUOTATION
+  INVOICE
+  RECEIPT
+  DRAWING
+  PERMIT
+  CERTIFICATE
+  DELIVERY_NOTE
+  REPORT
+  OTHER
+}
+
+enum DocumentStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Document {
+  id             String         @id @default(cuid())
+  projectId      String?
+  project        Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           DocumentType
+  fileName       String
+  fileUrl        String
+  fileSize       Int?
+  mimeType       String?
+  version        Int            @default(1)
+  status         DocumentStatus @default(ACTIVE)
+  uploadedById   String
+  uploadedBy     User           @relation(fields: [uploadedById], references: [id])
+  createdAt      DateTime       @default(now())
+
+  @@index([projectId])
+  @@index([organizationId])
+}
+
+// ---------------------------------------------------------------------------
+// BOQ
+// ---------------------------------------------------------------------------
+
+enum BoqStatus {
+  DRAFT
+  ACTIVE
+  LOCKED
+  ARCHIVED
+}
+
+model Boq {
+  id             String    @id @default(cuid())
+  projectId      String
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title          String
+  status         BoqStatus @default(DRAFT)
+  createdById    String
+  createdBy      User      @relation(fields: [createdById], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sections BoqSection[]
+  items    BoqItem[]
+  rfqs     Rfq[]
+
+  @@index([projectId])
+}
+
+model BoqSection {
+  id        String   @id @default(cuid())
+  boqId     String
+  boq       Boq      @relation(fields: [boqId], references: [id], onDelete: Cascade)
+  name      String
+  sequence  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  items BoqItem[]
+
+  @@index([boqId])
+}
+
+enum ProcurementStatus {
+  NOT_STARTED
+  RFQ_SENT
+  QUOTED
+  ORDERED
+  DELIVERED
+}
+
+model BoqItem {
+  id                 String            @id @default(cuid())
+  boqId              String
+  boq                Boq               @relation(fields: [boqId], references: [id], onDelete: Cascade)
+  boqSectionId       String
+  boqSection         BoqSection        @relation(fields: [boqSectionId], references: [id], onDelete: Cascade)
+  productId          String?
+  product            Product?          @relation(fields: [productId], references: [id])
+  description        String
+  quantity           Decimal           @db.Decimal(14, 3)
+  unit               String
+  estimatedUnitCost  Decimal           @db.Decimal(14, 2)
+  estimatedTotalCost Decimal           @db.Decimal(16, 2)
+  actualUnitCost     Decimal?          @db.Decimal(14, 2)
+  actualTotalCost    Decimal?          @db.Decimal(16, 2)
+  supplierId         String?
+  supplier           Supplier?         @relation(fields: [supplierId], references: [id])
+  procurementStatus  ProcurementStatus @default(NOT_STARTED)
+  sequence           Int               @default(0)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  rfqItems RfqItem[]
+
+  @@index([boqId])
+  @@index([boqSectionId])
+}
+
+// ---------------------------------------------------------------------------
+// MATERIAL CATALOG
+// ---------------------------------------------------------------------------
+
+model ProductCategory {
+  id        String            @id @default(cuid())
+  name      String            @unique
+  parentId  String?
+  parent    ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  ProductCategory[] @relation("CategoryHierarchy")
+  createdAt DateTime          @default(now())
+
+  products Product[]
+}
+
+model Unit {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  abbreviation String    @unique
+  createdAt    DateTime  @default(now())
+
+  products Product[]
+}
+
+model Product {
+  id           String          @id @default(cuid())
+  name         String
+  categoryId   String
+  category     ProductCategory @relation(fields: [categoryId], references: [id])
+  defaultUnitId String
+  defaultUnit  Unit            @relation(fields: [defaultUnitId], references: [id])
+  description  String?
+  sku          String?         @unique
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  supplierProducts SupplierProduct[]
+  boqItems         BoqItem[]
+
+  @@index([categoryId])
+}
+
+// ---------------------------------------------------------------------------
+// SUPPLIERS & CONTRACTORS
+// ---------------------------------------------------------------------------
+
+model Supplier {
+  id                 String              @id @default(cuid())
+  organizationId     String              @unique
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contactName        String?
+  contactPhone       String?
+  contactEmail       String?
+  location           String?
+  serviceArea        String?
+  verificationStatus VerificationStatus  @default(UNVERIFIED)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  products     SupplierProduct[]
+  boqItems     BoqItem[]
+  rfqSuppliers RfqSupplier[]
+  quotations   Quotation[]
+}
+
+model SupplierProduct {
+  id           String   @id @default(cuid())
+  supplierId   String
+  supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  price        Decimal  @db.Decimal(14, 2)
+  leadTimeDays Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([supplierId, productId])
+}
+
+model Contractor {
+  id                 String              @id @default(cuid())
+  organizationId     String              @unique
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  specialties        String?
+  location           String?
+  serviceArea        String?
+  registrationInfo   String?
+  verificationStatus VerificationStatus  @default(UNVERIFIED)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// PROCUREMENT: RFQ -> QUOTATION -> COMPARISON
+// (Purchase orders, contracts, deliveries, invoices and payments are a later
+// phase; RFQ/Quotation statuses below are deliberately left room to grow
+// into that workflow, e.g. Quotation.status ACCEPTED is the future hook for
+// PurchaseOrder creation.)
+// ---------------------------------------------------------------------------
+
+enum RfqStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  AWARDED
+  CANCELLED
+}
+
+model Rfq {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  boqId       String?
+  boq         Boq?      @relation(fields: [boqId], references: [id])
+  title       String
+  status      RfqStatus @default(DRAFT)
+  dueDate     DateTime?
+  notes       String?
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  items       RfqItem[]
+  rfqSuppliers RfqSupplier[]
+  quotations  Quotation[]
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model RfqItem {
+  id          String   @id @default(cuid())
+  rfqId       String
+  rfq         Rfq      @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  boqItemId   String?
+  boqItem     BoqItem? @relation(fields: [boqItemId], references: [id])
+  description String
+  quantity    Decimal  @db.Decimal(14, 3)
+  unit        String
+  createdAt   DateTime @default(now())
+
+  quotationItems QuotationItem[]
+
+  @@index([rfqId])
+}
+
+enum RfqSupplierStatus {
+  INVITED
+  VIEWED
+  QUOTED
+  DECLINED
+}
+
+model RfqSupplier {
+  id         String            @id @default(cuid())
+  rfqId      String
+  rfq        Rfq               @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplierId String
+  supplier   Supplier          @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  status     RfqSupplierStatus @default(INVITED)
+  invitedAt  DateTime          @default(now())
+
+  @@unique([rfqId, supplierId])
+  @@index([supplierId])
+}
+
+enum QuotationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model Quotation {
+  id           String          @id @default(cuid())
+  rfqId        String
+  rfq          Rfq             @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplierId   String
+  supplier     Supplier        @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  status       QuotationStatus @default(DRAFT)
+  validUntil   DateTime?
+  deliveryCost Decimal         @db.Decimal(14, 2) @default(0)
+  taxAmount    Decimal         @db.Decimal(14, 2) @default(0)
+  subtotal     Decimal         @db.Decimal(16, 2) @default(0)
+  total        Decimal         @db.Decimal(16, 2) @default(0)
+  notes        String?
+  submittedAt  DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  items QuotationItem[]
+
+  @@unique([rfqId, supplierId])
+  @@index([rfqId])
+  @@index([supplierId])
+}
+
+model QuotationItem {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  rfqItemId   String
+  rfqItem     RfqItem   @relation(fields: [rfqItemId], references: [id])
+  description String
+  quantity    Decimal   @db.Decimal(14, 3)
+  unit        String
+  unitPrice   Decimal   @db.Decimal(14, 2)
+  lineTotal   Decimal   @db.Decimal(16, 2)
+  createdAt   DateTime  @default(now())
+
+  @@index([quotationId])
+  @@index([rfqItemId])
+}
+
+// ---------------------------------------------------------------------------
+// AUDIT LOG
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+}
