@@ -111,8 +111,7 @@ the pattern; each new module repeats the same five pieces:
   that was also blocked; the app uses a system font stack instead (see
   `src/app/globals.css` / `layout.tsx`).
 - Next.js 16 renamed the `middleware.ts` convention to `proxy.ts` (Node.js
-  runtime by default now, no more Edge-runtime constraint). This repo still
-  uses `middleware.ts` — it works, just prints a deprecation warning — so
-  the Edge/Node config split described in `ARCHITECTURE.md` is stricter
-  than Next.js now requires; renaming to `proxy.ts` and merging the two
-  auth config files back into one is safe cleanup for a follow-up PR.
+  runtime by default now, no more Edge-runtime constraint) — this repo
+  uses `src/proxy.ts`. The Edge/Node `auth.config.ts`/`auth.ts` split is
+  kept anyway as a clean boundary even though it's no longer required for
+  Prisma compatibility (see `ARCHITECTURE.md`).

@@ -28,12 +28,11 @@
 - Server components use non-throwing `canAccessOrg`/`canAccessProject` and
   render `notFound()` (404) rather than a 403 on denial, so unauthorized
   users can't distinguish "doesn't exist" from "exists, but not yours."
-- `middleware.ts` is a coarse gate (redirects any unauthenticated request
+- `src/proxy.ts` is a coarse gate (redirects any unauthenticated request
   to non-public routes to `/login`) — it is **not** the authorization
   layer. Every API route re-checks authorization independently, per
-  Next.js's own guidance that middleware must not be relied on alone for
-  auth (see the `proxy.js` docs' "Execution order" note referenced in
-  `DEVELOPMENT.md`).
+  Next.js's own guidance that proxy/middleware must not be relied on alone
+  for auth (see the `proxy.js` docs' "Execution order" note).
 
 ## Input validation
 

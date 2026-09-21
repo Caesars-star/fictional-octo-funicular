@@ -71,10 +71,7 @@ licensed entity or partner integration, not be fabricated in the app layer.
 
 ## Known technical debt
 
-- **`middleware.ts` should become `proxy.ts`.** Next.js 16 renamed the
-  convention and now runs it on the Node.js runtime by default, which means
-  the Edge/Node `auth.config.ts`/`auth.ts` split in this repo is stricter
-  than currently necessary. Low-risk cleanup; see `DEVELOPMENT.md`.
+- ~~`middleware.ts` should become `proxy.ts`~~ — done (`src/proxy.ts`).
 - **No file/document upload flow yet** — `Document` is metadata-only.
 - **No rate limiting** on auth endpoints — see `SECURITY.md`.
 - **No transactional email provider** — password reset links are logged to

@@ -44,7 +44,7 @@ src/
     money.ts               Decimal-only arithmetic helpers for financial calculations
     validations/…          Zod schemas, one file per module, shared by client forms and API routes
   auth.ts / auth.config.ts NextAuth v5 config, split for Edge-safe proxy vs Node API routes
-  middleware.ts            route protection (redirects unauthenticated requests to /login)
+  proxy.ts                  route protection (redirects unauthenticated requests to /login)
 prisma/
   schema.prisma           the single source of truth for the data model
   seed.ts                 demo/development data
@@ -59,15 +59,16 @@ prisma/
 - Passwords hashed with **bcrypt**, cost factor 12, in `src/app/api/auth/register/route.ts`
   and `src/app/api/auth/reset-password/route.ts`. Never logged, never
   returned from any API response.
-- **Split config** (`auth.config.ts` vs `auth.ts`): `middleware.ts` runs the
-  edge-safe `authConfig` (no Prisma import — Prisma's native bindings
-  aren't Edge-compatible), while the Credentials provider (which queries
+- **Split config** (`auth.config.ts` vs `auth.ts`): `proxy.ts` runs the
+  edge-safe `authConfig`, while the Credentials provider (which queries
   Postgres) is only loaded by `auth.ts`, used from Node.js API routes and
-  server components. This is the standard NextAuth v5 pattern for
-  credentials + Prisma.
-- `middleware.ts` redirects any unauthenticated request to a non-public path
-  to `/login?callbackUrl=…`. Public paths are listed once, in
-  `auth.config.ts`.
+  server components. Next.js 16 renamed the `middleware.ts` convention to
+  `proxy.ts` and now defaults it to the Node.js runtime rather than Edge,
+  so this split is no longer strictly required for Prisma-compatibility —
+  it's kept anyway because it's a clean boundary (nothing that touches the
+  database runs in the proxy) and costs nothing to keep.
+- `proxy.ts` redirects any unauthenticated request to a non-public path to
+  `/login?callbackUrl=…`. Public paths are listed once, in `auth.config.ts`.
 
 ## Authorization architecture (`src/lib/rbac.ts`)
 
@@ -156,7 +157,7 @@ Errors always go through `handleApiError`.
 | Next.js App Router, one repo | Avoids a separate frontend/backend deploy for an MVP with modest traffic; colocated types end-to-end. |
 | Prisma + Postgres | Strong relational integrity for a graph this interconnected (Project → BOQ → RFQ → Quotation); `numeric` columns for money. |
 | JWT sessions, no Prisma adapter | Credentials-only MVP doesn't need database sessions; keeps auth simple until OAuth is actually needed. |
-| Two-file auth config | Required so Prisma (Node-only) isn't bundled into Edge middleware. |
+| Two-file auth config | Keeps Prisma (Node-only) out of the proxy file's bundle, and out of anything that isn't already known to run server-side. |
 | Zod schemas shared by forms & routes | One source of truth for "what's a valid quantity/price," enforced server-side regardless of what the client sends. |
 | BOQ totals computed on read, not stored | Avoids an entire class of "cached total drifted from line items" bugs; a BOQ's total is always `sum(item.estimatedTotalCost)` at query time. |
 | Quotation totals stored, but always server-recomputed on write | Quotations are compared and accepted/rejected as a frozen snapshot, so `subtotal`/`total` are persisted — but every `POST .../quotations` recomputes them from `quantity × unitPrice` server-side; a client-submitted total is never trusted or stored directly. |
