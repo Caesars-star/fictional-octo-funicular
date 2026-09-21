@@ -2,11 +2,16 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { EmptyState } from "@/components/empty-state";
 import { PurchaseOrderStatusControl } from "@/components/purchase-orders/purchase-order-status-control";
+import { RecordDeliveryDialog } from "@/components/deliveries/record-delivery-dialog";
+import { DeliveryStatusControl } from "@/components/deliveries/delivery-status-control";
 import { PO_STATUS_TRANSITIONS } from "@/lib/validations/purchase-order";
+import { DELIVERY_STATUS_TRANSITIONS, FULFILLING_DELIVERY_STATUSES } from "@/lib/validations/delivery";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate, formatMoney, formatQuantity } from "@/lib/utils";
+import { sumDecimal } from "@/lib/money";
 
 export default async function PurchaseOrderDetailPage({
   params,
@@ -18,12 +23,31 @@ export default async function PurchaseOrderDetailPage({
   const po = await prisma.purchaseOrder.findUnique({
     where: { id: purchaseOrderId },
     include: {
-      items: true,
+      items: { include: { deliveryItems: { include: { delivery: { select: { status: true } } } } } },
       supplier: { include: { organization: true } },
       quotation: { select: { id: true, rfqId: true } },
+      deliveries: {
+        include: { items: true, receivedBy: { select: { firstName: true, lastName: true } } },
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
   if (!po || po.projectId !== projectId) notFound();
+
+  const deliverableItems = po.items.map((item) => {
+    const delivered = sumDecimal(
+      item.deliveryItems
+        .filter((di) => FULFILLING_DELIVERY_STATUSES.includes(di.delivery.status))
+        .map((di) => di.quantity),
+    );
+    const outstanding = item.quantity.sub(delivered);
+    return {
+      id: item.id,
+      description: item.description,
+      unit: item.unit,
+      outstandingQuantity: (outstanding.greaterThan(0) ? outstanding : sumDecimal([])).toString(),
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -118,6 +142,60 @@ export default async function PurchaseOrderDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle>Deliveries</CardTitle>
+          <RecordDeliveryDialog purchaseOrderId={po.id} items={deliverableItems} />
+        </CardHeader>
+        <CardContent>
+          {po.deliveries.length === 0 ? (
+            <EmptyState
+              title="No deliveries recorded yet"
+              description="Record a delivery as materials arrive on site."
+            />
+          ) : (
+            <div className="space-y-4">
+              {po.deliveries.map((delivery) => (
+                <div key={delivery.id} className="rounded-md border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={delivery.status} />
+                      <span className="text-sm text-muted-foreground">
+                        {delivery.deliveredDate
+                          ? `Delivered ${formatDate(delivery.deliveredDate)}`
+                          : delivery.expectedDate
+                            ? `Expected ${formatDate(delivery.expectedDate)}`
+                            : "No date set"}
+                      </span>
+                      {delivery.location && (
+                        <span className="text-sm text-muted-foreground">· {delivery.location}</span>
+                      )}
+                    </div>
+                    <DeliveryStatusControl
+                      deliveryId={delivery.id}
+                      allowedTransitions={DELIVERY_STATUS_TRANSITIONS[delivery.status]}
+                    />
+                  </div>
+                  <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+                    {delivery.items.map((item) => (
+                      <li key={item.id}>
+                        {item.description} — {formatQuantity(item.quantity.toString())} {item.unit}
+                      </li>
+                    ))}
+                  </ul>
+                  {delivery.receivedBy && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Received by {delivery.receivedBy.firstName} {delivery.receivedBy.lastName}
+                    </p>
+                  )}
+                  {delivery.notes && <p className="mt-2 text-sm">{delivery.notes}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

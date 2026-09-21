@@ -13,7 +13,9 @@ export function ProjectTabNav({ projectId }: { projectId: string }) {
     { label: "BOQ", href: `${base}/boq` },
     { label: "RFQs & Quotations", href: `${base}/rfqs` },
     { label: "Purchase Orders", href: `${base}/purchase-orders` },
+    { label: "Deliveries", href: `${base}/deliveries` },
     { label: "Contracts", href: `${base}/contracts` },
+    { label: "Milestones", href: `${base}/milestones` },
   ];
 
   return (

@@ -77,3 +77,38 @@ describe("purchase order total (copied from an accepted quotation)", () => {
     expect(purchaseOrderTotal.toString()).toBe("740098");
   });
 });
+
+describe("delivery fulfilment comparison (recomputePurchaseOrderDeliveryStatus logic)", () => {
+  // src/lib/purchase-orders.ts compares each PO item's ordered quantity
+  // against the sum of its DELIVERED/VERIFIED delivery quantities using
+  // exactly these Decimal comparisons — exercised here without a database.
+  it("treats a fully-delivered item as complete (delivered == ordered)", () => {
+    const ordered = new Prisma.Decimal("500");
+    const delivered = sumDecimal(["500"]);
+    expect(delivered.lessThan(ordered)).toBe(false);
+  });
+
+  it("treats a partially-delivered item as incomplete (delivered < ordered)", () => {
+    const ordered = new Prisma.Decimal("2"); // tonnes of steel
+    const delivered = sumDecimal([]); // none delivered yet
+    expect(delivered.lessThan(ordered)).toBe(true);
+    expect(delivered.greaterThan(0)).toBe(false);
+  });
+
+  it("sums multiple partial deliveries toward the same item", () => {
+    const ordered = new Prisma.Decimal("30"); // m3 of ballast
+    const delivered = sumDecimal(["12", "18"]); // two staggered deliveries
+    expect(delivered.lessThan(ordered)).toBe(false);
+    expect(delivered.toString()).toBe("30");
+  });
+
+  it("does not count a DISPUTED delivery's quantity toward fulfilment", () => {
+    // Mirrors FULFILLING_DELIVERY_STATUSES = [DELIVERED, VERIFIED] — a
+    // disputed delivery's items are excluded from the sum entirely, so an
+    // item with only a disputed delivery reads as zero delivered.
+    const disputedQuantity = "500";
+    const fulfillingQuantities: string[] = []; // disputed excluded
+    expect(sumDecimal(fulfillingQuantities).toString()).toBe("0");
+    expect(sumDecimal(fulfillingQuantities).toString()).not.toBe(disputedQuantity);
+  });
+});

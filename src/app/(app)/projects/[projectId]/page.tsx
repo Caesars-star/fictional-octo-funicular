@@ -11,19 +11,26 @@ export default async function ProjectOverviewPage({
 }) {
   const { projectId } = await params;
 
-  const [project, boqCount, rfqCount, purchaseOrders, contractCount] = await Promise.all([
-    prisma.project.findUniqueOrThrow({
-      where: { id: projectId },
-      include: { site: true },
-    }),
-    prisma.boq.count({ where: { projectId } }),
-    prisma.rfq.count({ where: { projectId } }),
-    prisma.purchaseOrder.findMany({
-      where: { projectId, status: { notIn: ["CANCELLED"] } },
-      select: { total: true },
-    }),
-    prisma.contract.count({ where: { projectId } }),
-  ]);
+  const [project, boqCount, rfqCount, purchaseOrders, contractCount, openMilestoneCount, upcomingMilestones] =
+    await Promise.all([
+      prisma.project.findUniqueOrThrow({
+        where: { id: projectId },
+        include: { site: true },
+      }),
+      prisma.boq.count({ where: { projectId } }),
+      prisma.rfq.count({ where: { projectId } }),
+      prisma.purchaseOrder.findMany({
+        where: { projectId, status: { notIn: ["CANCELLED"] } },
+        select: { total: true },
+      }),
+      prisma.contract.count({ where: { projectId } }),
+      prisma.milestone.count({ where: { projectId, status: { notIn: ["VERIFIED", "CANCELLED"] } } }),
+      prisma.milestone.findMany({
+        where: { projectId, status: { notIn: ["VERIFIED", "CANCELLED"] } },
+        orderBy: { plannedDate: "asc" },
+        take: 5,
+      }),
+    ]);
 
   const committedCost = sumDecimal(purchaseOrders.map((po) => po.total));
 
@@ -37,11 +44,12 @@ export default async function ProjectOverviewPage({
     { label: "BOQs", value: boqCount },
     { label: "RFQs", value: rfqCount },
     { label: "Contracts", value: contractCount },
+    { label: "Open milestones", value: openMilestoneCount },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {stats.map((stat) => (
           <Card key={stat.label}>
             <CardContent className="p-4">
@@ -121,6 +129,39 @@ export default async function ProjectOverviewPage({
             <Link href={`/projects/${projectId}/site`} className="inline-block text-primary hover:underline">
               {project.site ? "Edit site details" : "Add site details"} →
             </Link>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Upcoming milestones</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {upcomingMilestones.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No open milestones.{" "}
+                <Link href={`/projects/${projectId}/milestones`} className="text-primary hover:underline">
+                  Add one
+                </Link>
+                .
+              </p>
+            ) : (
+              <ul className="divide-y">
+                {upcomingMilestones.map((m) => (
+                  <li key={m.id} className="flex items-center justify-between py-2 text-sm first:pt-0 last:pb-0">
+                    <Link
+                      href={`/projects/${projectId}/milestones/${m.id}`}
+                      className="font-medium hover:underline"
+                    >
+                      {m.name}
+                    </Link>
+                    <span className="text-muted-foreground">
+                      {m.plannedDate ? formatDate(m.plannedDate) : "No date set"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       </div>

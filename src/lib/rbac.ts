@@ -150,6 +150,36 @@ export async function requirePurchaseOrderAccess(
   return po;
 }
 
+/** Resolves a Delivery's project (via its purchase order) and applies requireProjectAccess. */
+export async function requireDeliveryAccess(
+  user: SessionUser,
+  deliveryId: string,
+  opts: { minProjectRole?: ProjectMemberRole } = {},
+) {
+  const delivery = await prisma.delivery.findUnique({
+    where: { id: deliveryId },
+    select: { purchaseOrder: { select: { projectId: true } } },
+  });
+  if (!delivery) throw new ApiError(404, "Delivery not found.");
+  await requireProjectAccess(user, delivery.purchaseOrder.projectId, opts);
+  return delivery;
+}
+
+/** Resolves a Milestone's project and applies the same access rules as requireProjectAccess. */
+export async function requireMilestoneAccess(
+  user: SessionUser,
+  milestoneId: string,
+  opts: { minProjectRole?: ProjectMemberRole } = {},
+) {
+  const milestone = await prisma.milestone.findUnique({
+    where: { id: milestoneId },
+    select: { projectId: true },
+  });
+  if (!milestone) throw new ApiError(404, "Milestone not found.");
+  await requireProjectAccess(user, milestone.projectId, opts);
+  return milestone;
+}
+
 /** Resolves a Contract's project and applies the same access rules as requireProjectAccess. */
 export async function requireContractAccess(
   user: SessionUser,

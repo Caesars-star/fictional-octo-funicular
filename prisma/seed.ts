@@ -7,6 +7,7 @@
  */
 import { PrismaClient, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { recomputePurchaseOrderDeliveryStatus } from "../src/lib/purchase-orders";
 
 const prisma = new PrismaClient();
 
@@ -520,13 +521,13 @@ async function main() {
       data: { procurementStatus: "ORDERED" },
     });
 
-    await prisma.purchaseOrder.create({
+    const purchaseOrder = await prisma.purchaseOrder.create({
       data: {
         projectId: project.id,
         quotationId: acceptedQuotation.id,
         supplierId: hardwareSupplier.id,
         poNumber: "PO-0001",
-        status: "ISSUED",
+        status: "ACCEPTED",
         issueDate: new Date("2026-09-10"),
         expectedDeliveryDate: new Date("2026-09-20"),
         terms: "Payment due within 30 days of delivery. Bulk discount applied per quotation.",
@@ -546,7 +547,47 @@ async function main() {
           })),
         },
       },
+      include: { items: true },
     });
+
+    // -------------------------------------------------------------------
+    // A first, partial delivery against PO-0001 — cement and sand have
+    // arrived on site, steel and ballast are still outstanding. This
+    // demonstrates recomputePurchaseOrderDeliveryStatus moving the PO from
+    // ACCEPTED to PARTIALLY_DELIVERED.
+    // -------------------------------------------------------------------
+    const cementPoItem = purchaseOrder.items.find((i) => i.description === "Portland Cement 50kg")!;
+    const sandPoItem = purchaseOrder.items.find((i) => i.description === "River Sand")!;
+
+    const firstDelivery = await prisma.delivery.create({
+      data: {
+        purchaseOrderId: purchaseOrder.id,
+        status: "DELIVERED",
+        expectedDate: new Date("2026-09-18"),
+        deliveredDate: new Date("2026-09-18"),
+        location: "Site store, Thika Residential Development",
+        receivedById: pmUser.id,
+        notes: "First batch received in good condition. Steel and ballast still outstanding.",
+        createdById: pmUser.id,
+        items: {
+          create: [
+            {
+              purchaseOrderItemId: cementPoItem.id,
+              description: cementPoItem.description,
+              quantity: cementPoItem.quantity,
+              unit: cementPoItem.unit,
+            },
+            {
+              purchaseOrderItemId: sandPoItem.id,
+              description: sandPoItem.description,
+              quantity: sandPoItem.quantity,
+              unit: sandPoItem.unit,
+            },
+          ],
+        },
+      },
+    });
+    await recomputePurchaseOrderDeliveryStatus(purchaseOrder.id);
 
     // -------------------------------------------------------------------
     // A general contractor agreement for the project's construction works.
@@ -570,6 +611,25 @@ async function main() {
         { contractId: contract.id, organizationId: developerOrg.id, role: "CLIENT" },
         { contractId: contract.id, organizationId: generalContractorOrg.id, role: "CONTRACTOR" },
       ],
+    });
+
+    // -------------------------------------------------------------------
+    // A milestone tied to the contract, in progress.
+    // -------------------------------------------------------------------
+    await prisma.milestone.create({
+      data: {
+        projectId: project.id,
+        contractId: contract.id,
+        name: "Foundation Complete",
+        description: "Excavation, blinding, footings and foundation walls complete and cured.",
+        plannedDate: new Date("2026-09-30"),
+        percentage: 15,
+        responsibleOrgId: generalContractorOrg.id,
+        paymentAmount: money(4_200_000),
+        status: "IN_PROGRESS",
+        notes: `First delivery (${firstDelivery.id.slice(-6)}) received on site; awaiting remaining steel and ballast before pour.`,
+        createdById: pmUser.id,
+      },
     });
   }
 

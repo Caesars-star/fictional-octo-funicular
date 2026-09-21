@@ -90,12 +90,14 @@ data — never trusted from the client:
 Every API route calls one of `requireSessionUser`, `requireOrgAccess`,
 `requireProjectAccess`, `requireBoqAccess`, `requireRfqAccess`,
 `requireSupplierAccess`, `requireQuotationProjectAccess`,
-`requirePurchaseOrderAccess`, or `requireContractAccess` before touching
-the database — each of the latter resolves up to the owning project and
+`requirePurchaseOrderAccess`, `requireContractAccess`,
+`requireDeliveryAccess`, or `requireMilestoneAccess` before touching the
+database — each of the latter resolves up to the owning project and
 delegates to `requireProjectAccess` rather than re-implementing access
-logic. These throw `ApiError(401|403|404, message)`, which
-`handleApiError` turns into a safe JSON response — routes never leak
-Prisma error internals to the client (see `SECURITY.md`).
+logic (`requireDeliveryAccess`, for instance, resolves through
+`delivery.purchaseOrder.projectId`). These throw `ApiError(401|403|404,
+message)`, which `handleApiError` turns into a safe JSON response — routes
+never leak Prisma error internals to the client (see `SECURITY.md`).
 
 Server components use the non-throwing `canAccessOrg` / `canAccessProject`
 variants and call `notFound()` on failure, so unauthorized access to
@@ -113,24 +115,45 @@ purchase order is the one place a total is *copied* rather than recomputed
 — it's created from an already-server-computed, `ACCEPTED` quotation, and
 copying (not re-deriving) is what keeps the PO an accurate snapshot of what
 was actually accepted. See `src/lib/money.test.ts` for the exactness tests
-(including the classic `0.1 + 0.2` float-precision case) and the PO/contract
-status-transition tests in `src/lib/validations/*.test.ts`.
+(including the classic `0.1 + 0.2` float-precision case, and the delivery
+fulfilment comparison logic) and the status-transition tests in
+`src/lib/validations/*.test.ts`.
 
 ## Status transition architecture
 
-Purchase orders and contracts add a pattern the earlier modules didn't need:
-a **closed, forward-only status transition table** —
-`PO_STATUS_TRANSITIONS` / `CONTRACT_STATUS_TRANSITIONS` in
-`src/lib/validations/purchase-order.ts` / `contract.ts` — mapping each
-status to the set of statuses it may legally move to next (e.g. a `DRAFT`
-PO may become `ISSUED` or `CANCELLED`, never jump straight to `COMPLETED`).
-The `PATCH` routes for both resources check the requested status against
-this table before writing, returning `400` on an illegal transition. This
-is the same idea as `RfqStatus`/`QuotationStatus` already being closed
-enums, taken one step further: not just *which* values are valid, but
-*which changes between them* are valid. The next state-machine-shaped
-module (e.g. `Delivery`, `Invoice`) should follow the same pattern rather
-than validating transitions ad hoc in the route handler.
+Purchase orders, contracts, deliveries and milestones all use a **closed,
+forward-only status transition table** — `PO_STATUS_TRANSITIONS` /
+`CONTRACT_STATUS_TRANSITIONS` / `DELIVERY_STATUS_TRANSITIONS` /
+`MILESTONE_STATUS_TRANSITIONS` in their respective
+`src/lib/validations/*.ts` files — mapping each status to the set of
+statuses it may legally move to next (e.g. a `DRAFT` PO may become
+`ISSUED` or `CANCELLED`, never jump straight to `COMPLETED`). The `PATCH`
+routes for each resource check the requested status against its table
+before writing, returning `400` on an illegal transition. This is the same
+idea as `RfqStatus`/`QuotationStatus` already being closed enums, taken one
+step further: not just *which* values are valid, but *which changes
+between them* are valid. The next state-machine-shaped module (e.g.
+`Invoice`) should follow the same pattern rather than validating
+transitions ad hoc in the route handler.
+
+Two of these tables also gate a status value behind a *role*, not just a
+legal-transition check: moving a `Delivery` or `Milestone` to `VERIFIED`
+requires project `MANAGER`+, while every other transition only requires
+`MEMBER`+. This is the same human-in-the-loop distinction the product
+brief calls for — recording that something happened (a delivery arrived, a
+milestone's work looks done) is a front-line action; confirming it's
+*correct* is a supervisory one, and the two must not collapse into a
+single "mark it done" button.
+
+Deliveries add one more piece: **derived status**. A `PurchaseOrder`'s
+`PARTIALLY_DELIVERED`/`COMPLETED` status is never set directly by a client
+— `recomputePurchaseOrderDeliveryStatus` (`src/lib/purchase-orders.ts`)
+derives it from the sum of each `PurchaseOrderItem`'s fulfilling
+(`DELIVERED`/`VERIFIED`, not `DISPUTED`) delivery quantities every time a
+delivery's status changes, and only ever moves the PO forward. A future
+`Invoice`-vs-milestone reconciliation is likely to want the same shape:
+compute the derived state from the underlying event records, don't let a
+client set it directly.
 
 ## API architecture
 
@@ -153,8 +176,12 @@ list):
 /api/rfqs/[rfqId]/quotations
 /api/quotations/[quotationId]/purchase-order
 /api/purchase-orders/[purchaseOrderId]
+/api/purchase-orders/[purchaseOrderId]/deliveries
+/api/deliveries/[deliveryId]
 /api/contracts/[contractId]
 /api/contracts/[contractId]/parties
+/api/projects/[projectId]/milestones
+/api/milestones/[milestoneId]
 /api/quotations/[quotationId]
 /api/catalog/{categories,units,products}
 /api/suppliers/[supplierId]/products

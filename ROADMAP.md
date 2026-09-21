@@ -28,9 +28,24 @@ RFQ → SUPPLIER QUOTATION → COMPARISON, backed by real PostgreSQL, with:
   (`CLIENT`/`CONTRACTOR`/`SUPPLIER`/`CONSULTANT`/`OTHER`), value, dates,
   obligations, closed forward-only status transitions (`DRAFT → ACTIVE →
   {COMPLETED, TERMINATED}`).
+- **Deliveries**: recorded against a purchase order's items, partial
+  quantities across multiple deliveries supported, closed forward-only
+  status transitions (`EXPECTED → IN_TRANSIT → DELIVERED → VERIFIED`,
+  `DISPUTED` reachable from any non-terminal status). Marking a delivery
+  `VERIFIED` requires project `MANAGER`+. Every delivery status change
+  recomputes the parent purchase order's fulfilment status
+  (`ACCEPTED → PARTIALLY_DELIVERED → COMPLETED`) from actual delivered
+  quantities — never a manual PO status change.
+- **Milestones**: project checkpoints (optionally tied to a contract) with
+  planned/actual dates, percentage of project, responsible party, and a
+  payment amount for a future invoice to be raised against. Same closed
+  forward-only status model (`PLANNED → IN_PROGRESS → COMPLETED →
+  VERIFIED`, `DELAYED`/`CANCELLED` off-ramps), `VERIFIED` also gated to
+  project `MANAGER`+.
 - Seed data + demo accounts exercising the full chain end-to-end, including
-  an awarded quotation, its purchase order, and a sample contractor
-  agreement.
+  an awarded quotation, its purchase order, a first partial delivery
+  against it (demonstrating the PO moving to `PARTIALLY_DELIVERED`), a
+  sample contractor agreement, and an in-progress milestone tied to it.
 
 See `README.md` for demo accounts and `ARCHITECTURE.md`/`DATABASE.md` for
 how it's built.
@@ -39,13 +54,10 @@ how it's built.
 
 The natural continuation of the workflow already modeled:
 
-1. **Deliveries** — track against a purchase order, with verification
-   status; the natural trigger for `PurchaseOrder.status` moving to
-   `PARTIALLY_DELIVERED`/`COMPLETED` instead of that being a manual change.
-2. **Milestones** — project/contract milestones with planned/actual dates,
-   percentage complete, and payment linkage.
-3. **Invoices** — from POs/contracts, with approval workflow.
-4. **Payment records** — explicitly labeled as *transaction records*, not a
+1. **Invoices** — from POs/contracts/verified milestones, with an approval
+   workflow. `Milestone.paymentAmount` is the natural trigger for raising
+   one once a milestone is `VERIFIED`.
+2. **Payment records** — explicitly labeled as *transaction records*, not a
    banking/wallet system (see "Regulatory design principle" below).
 
 ## Then (P5 — Network, P6 — Intelligence)

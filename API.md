@@ -74,6 +74,13 @@ never a raw stack trace or database error (see `src/lib/api-error.ts`).
 | `POST` | `/api/quotations/:quotationId/purchase-order` | project `MANAGER`+ | Create a purchase order from an `ACCEPTED` quotation — copies its line items and totals. One PO per quotation; fails `409` if one already exists, `400` if the quotation isn't accepted yet. |
 | `PATCH` | `/api/purchase-orders/:id` | project `MANAGER`+ | Update `status` (validated against a closed forward-only transition table — see `DATABASE.md`), `expectedDeliveryDate`, or `terms`. Setting `status: "ISSUED"` stamps `issueDate` if unset. |
 
+## Deliveries
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/purchase-orders/:purchaseOrderId/deliveries` | project member | Record a delivery against a PO's items (partial quantities allowed). `400` if the PO isn't `ACCEPTED`/`PARTIALLY_DELIVERED` yet. |
+| `PATCH` | `/api/deliveries/:id` | project member (project `MANAGER`+ to set `status: "VERIFIED"`) | Update `status` (validated against a closed forward-only transition table), `deliveredDate`, `location`, `receivedById`, or `notes`. Any status change recomputes the parent PO's fulfilment status. |
+
 ## Contracts
 
 | Method | Path | Auth | Description |
@@ -81,6 +88,13 @@ never a raw stack trace or database error (see `src/lib/api-error.ts`).
 | `POST` | `/api/projects/:projectId/contracts` | project `MANAGER`+ | Create a contract (+ optional initial parties). |
 | `PATCH` | `/api/contracts/:id` | project `MANAGER`+ | Update fields and/or `status` (validated against a closed forward-only transition table). |
 | `POST` | `/api/contracts/:id/parties` | project `MANAGER`+ | Add (or update the role of) a party organization on the contract. |
+
+## Milestones
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/projects/:projectId/milestones` | project member | Create a milestone (+ optional `contractId` linking it to a project contract). |
+| `PATCH` | `/api/milestones/:id` | project member (project `MANAGER`+ to set `status: "VERIFIED"`) | Update fields and/or `status` (validated against a closed forward-only transition table). Setting `status: "COMPLETED"` stamps `actualDate` if unset. |
 
 ## Example: creating an RFQ
 
@@ -165,5 +179,55 @@ Content-Type: application/json
     { "organizationId": "clx_org_developer", "role": "CLIENT" },
     { "organizationId": "clx_org_contractor", "role": "CONTRACTOR" }
   ]
+}
+```
+
+## Example: recording a delivery
+
+```http
+POST /api/purchase-orders/clx_po_1/deliveries
+Content-Type: application/json
+
+{
+  "items": [
+    { "purchaseOrderItemId": "clx_poitem_1", "quantity": "500" },
+    { "purchaseOrderItemId": "clx_poitem_2", "quantity": "20" }
+  ],
+  "expectedDate": "2026-09-18",
+  "location": "Site store, Thika Residential Development",
+  "notes": "First batch — steel and ballast still outstanding."
+}
+```
+
+Delivered quantities need not cover a PO item in full; a PO can have
+several partial deliveries over time. The new delivery starts as
+`EXPECTED`; advance it with `PATCH /api/deliveries/:id`.
+
+## Example: verifying a delivery
+
+```http
+PATCH /api/deliveries/clx_delivery_1
+Content-Type: application/json
+
+{ "status": "VERIFIED" }
+```
+
+Requires project `MANAGER`+. On success, the parent purchase order's
+fulfilment status is recomputed automatically (see `DATABASE.md`).
+
+## Example: creating a milestone
+
+```http
+POST /api/projects/clx.../milestones
+Content-Type: application/json
+
+{
+  "contractId": "clx_contract_1",
+  "name": "Foundation Complete",
+  "description": "Excavation, blinding, footings and foundation walls complete and cured.",
+  "plannedDate": "2026-09-30",
+  "percentage": 15,
+  "responsibleOrgId": "clx_org_contractor",
+  "paymentAmount": "4200000"
 }
 ```

@@ -58,6 +58,9 @@ model User {
   passwordResetTokens PasswordResetToken[]
   createdPurchaseOrders PurchaseOrder[]
   createdContracts  Contract[]
+  createdDeliveries Delivery[]           @relation("DeliveryCreatedBy")
+  receivedDeliveries Delivery[]          @relation("DeliveryReceivedBy")
+  createdMilestones Milestone[]
 
   @@index([role])
 }
@@ -110,6 +113,7 @@ model Organization {
   contractor  Contractor?
   documents   Document[]
   contractParties ContractParty[]
+  responsibleMilestones Milestone[]
 
   @@index([type])
 }
@@ -194,6 +198,7 @@ model Project {
   rfqs      Rfq[]
   purchaseOrders PurchaseOrder[]
   contracts Contract[]
+  milestones Milestone[]
 
   @@index([organizationId])
   @@index([status])
@@ -290,6 +295,10 @@ model Document {
   organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contractId     String?
   contract       Contract?      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  deliveryId     String?
+  delivery       Delivery?      @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  milestoneId    String?
+  milestone      Milestone?     @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
   type           DocumentType
   fileName       String
   fileUrl        String
@@ -304,6 +313,8 @@ model Document {
   @@index([projectId])
   @@index([organizationId])
   @@index([contractId])
+  @@index([deliveryId])
+  @@index([milestoneId])
 }
 
 // ---------------------------------------------------------------------------
@@ -643,6 +654,7 @@ model PurchaseOrder {
   updatedAt           DateTime  @updatedAt
 
   items PurchaseOrderItem[]
+  deliveries Delivery[]
 
   @@unique([projectId, poNumber])
   @@index([projectId])
@@ -662,6 +674,8 @@ model PurchaseOrderItem {
   unitPrice       Decimal        @db.Decimal(14, 2)
   lineTotal       Decimal        @db.Decimal(16, 2)
   createdAt       DateTime       @default(now())
+
+  deliveryItems DeliveryItem[]
 
   @@index([purchaseOrderId])
 }
@@ -704,6 +718,7 @@ model Contract {
 
   parties   ContractParty[]
   documents Document[]
+  milestones Milestone[]
 
   @@index([projectId])
   @@index([status])
@@ -728,6 +743,102 @@ model ContractParty {
 
   @@unique([contractId, organizationId])
   @@index([organizationId])
+}
+
+// ---------------------------------------------------------------------------
+// DELIVERIES
+// A purchase order can have several deliveries (partial/staggered
+// shipments). Once a delivery is marked DELIVERED or VERIFIED, its items'
+// quantities are summed per PurchaseOrderItem to decide whether the PO
+// itself should move to PARTIALLY_DELIVERED or COMPLETED — see
+// recomputePurchaseOrderDeliveryStatus in src/lib/purchase-orders.ts.
+// ---------------------------------------------------------------------------
+
+enum DeliveryStatus {
+  EXPECTED
+  IN_TRANSIT
+  DELIVERED
+  VERIFIED
+  DISPUTED
+}
+
+model Delivery {
+  id              String         @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  status          DeliveryStatus @default(EXPECTED)
+  expectedDate    DateTime?
+  deliveredDate   DateTime?
+  location        String?
+  receivedById    String?
+  receivedBy      User?          @relation("DeliveryReceivedBy", fields: [receivedById], references: [id])
+  notes           String?
+  createdById     String
+  createdBy       User           @relation("DeliveryCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  items     DeliveryItem[]
+  documents Document[]
+
+  @@index([purchaseOrderId])
+  @@index([status])
+}
+
+model DeliveryItem {
+  id                  String            @id @default(cuid())
+  deliveryId          String
+  delivery            Delivery          @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  purchaseOrderItemId String
+  purchaseOrderItem   PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id])
+  description         String
+  quantity            Decimal           @db.Decimal(14, 3)
+  unit                String
+  createdAt           DateTime          @default(now())
+
+  @@index([deliveryId])
+  @@index([purchaseOrderItemId])
+}
+
+// ---------------------------------------------------------------------------
+// MILESTONES
+// ---------------------------------------------------------------------------
+
+enum MilestoneStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  VERIFIED
+  DELAYED
+  CANCELLED
+}
+
+model Milestone {
+  id               String          @id @default(cuid())
+  projectId        String
+  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractId       String?
+  contract         Contract?       @relation(fields: [contractId], references: [id])
+  name             String
+  description      String?
+  plannedDate      DateTime?
+  actualDate       DateTime?
+  percentage       Int?
+  responsibleOrgId String?
+  responsibleOrg   Organization?   @relation(fields: [responsibleOrgId], references: [id])
+  paymentAmount    Decimal?        @db.Decimal(16, 2)
+  status           MilestoneStatus @default(PLANNED)
+  notes            String?
+  createdById      String
+  createdBy        User            @relation(fields: [createdById], references: [id])
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  documents Document[]
+
+  @@index([projectId])
+  @@index([contractId])
+  @@index([status])
 }
 
 // ---------------------------------------------------------------------------

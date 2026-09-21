@@ -11,12 +11,12 @@ the workflow
 ```
 AUTH → ORGANIZATION → PROJECT → BOQ → MATERIAL CATALOG → RFQ → SUPPLIER QUOTATION → COMPARISON
                                                                           ↓
-                                                        ACCEPT → PURCHASE ORDER
-                                                        (+ CONTRACTS, independently, per project)
+                                                        ACCEPT → PURCHASE ORDER → DELIVERIES
+                                                        (+ CONTRACTS → MILESTONES, per project)
 ```
 
 See [ROADMAP.md](./ROADMAP.md) for what's deliberately out of scope for now
-(deliveries, invoices, payments, financing, GIS, AI) and why.
+(invoices, payments, financing, GIS, AI) and why.
 
 ## Stack
 
@@ -59,9 +59,10 @@ Full details, including how to run without Docker, are in
 `npm run db:seed` creates a demo organization ("TARA Demo Development Ltd"),
 a demo project ("Thika Residential Development — Demo Project") with a BOQ,
 an RFQ with two supplier quotations ready to compare, one of them accepted
-with a purchase order (`PO-0001`) issued from it, and a sample general
-contractor agreement. All seeded accounts share the password
-`TaraDemo2026!`:
+with a purchase order (`PO-0001`) issued from it and a first partial
+delivery already recorded against it, a sample general contractor
+agreement, and an in-progress milestone tied to it. All seeded accounts
+share the password `TaraDemo2026!`:
 
 | Email | Role |
 | --- | --- |
