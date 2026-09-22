@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tara
+      POSTGRES_PASSWORD: tara_dev_password
+      POSTGRES_DB: tara
+    ports:
+      - "5432:5432"
+    volumes:
+      - tara_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tara -d tara"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  tara_postgres_data:
