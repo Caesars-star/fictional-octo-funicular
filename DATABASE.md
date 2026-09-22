@@ -20,8 +20,11 @@ PostgreSQL, managed by Prisma. Full schema: [`prisma/schema.prisma`](./prisma/sc
   only make sense attached to a parent (`BoqSection`, `BoqItem`,
   `RfqItem`, `QuotationItem`, `PurchaseOrderItem`, `ContractParty`,
   `DeliveryItem`, `OrganizationMembership`, `ProjectMember`) cascade-delete
-  with their parent. Entities that represent independent economic actors
-  (`Organization`, `Supplier`, `Product`) do not cascade from a project.
+  with their parent. `Payment` cascades from its `Invoice` for the same
+  reason, but is never itself deleted by the application — a wrong payment
+  is reversed (see "Payments" below), not removed. Entities that represent
+  independent economic actors (`Organization`, `Supplier`, `Product`) do
+  not cascade from a project.
 
 ## Entity map (MVP scope)
 
@@ -30,7 +33,7 @@ User ──< OrganizationMembership >── Organization ──< Project
                                           │                │
                                           │                ├──< ProjectMember >── User
                                      Supplier               ├── Site (1:1)
-                                     Contractor              ├──< Document >── Contract / Delivery / Milestone (nullable)
+                                     Contractor              ├──< Document >── Contract / Delivery / Milestone / Invoice (nullable)
                                                               ├──< Boq ──< BoqSection ──< BoqItem >── Product
                                                               │                                          │
                                                               ├──< Rfq ──< RfqItem ──────────────────────┘
@@ -46,7 +49,11 @@ User ──< OrganizationMembership >── Organization ──< Project
                                                               │
                                                               ├──< Contract ──< ContractParty >── Organization
                                                               │        │
-                                                              └────────┴──< Milestone >── Organization (responsible party, nullable)
+                                                              ├────────┴──< Milestone >── Organization (responsible party, nullable)
+                                                              │                │
+                                                              └──< Invoice ────┘  (nullable link to PurchaseOrder / Contract / Milestone)
+                                                                       │
+                                                                       └──< Payment >── Organization ×2 (payer, payee)
 
 Product >── ProductCategory (self-referential hierarchy)
 Product >── Unit
@@ -73,6 +80,8 @@ Delivery.purchaseOrderId → PurchaseOrder.projectId
 DeliveryItem.purchaseOrderItemId → PurchaseOrderItem
 Contract.projectId
 Milestone.projectId, Milestone.contractId → Contract (nullable)
+Invoice.projectId, Invoice.purchaseOrderId / contractId / milestoneId (all nullable)
+Payment.projectId, Payment.invoiceId → Invoice
 ```
 
 So from any `Quotation`, you can always resolve `quotation.rfq.projectId`
@@ -81,8 +90,9 @@ does for authorization); from any `PurchaseOrder`, `purchaseOrder.projectId`
 is denormalized directly onto the row (not derived through the quotation)
 so `requirePurchaseOrderAccess` can check project access in one query;
 `requireDeliveryAccess` resolves through `delivery.purchaseOrder.projectId`
-the same way; and from any `Quotation`'s items back to the originating
-`BoqItem`.
+the same way; `Invoice` and `Payment` both carry `projectId` directly for
+the same single-hop reason; and from any `Quotation`'s items back to the
+originating `BoqItem`.
 
 ## Migrations
 
@@ -104,25 +114,26 @@ npm run db:seed
 `prisma/seed.ts` is idempotent (uses `upsert` throughout) for catalog data,
 organizations and users, so it's safe to re-run. It creates the demo
 project, BOQ, RFQ/quotations, the awarded quotation's purchase order, a
-first partial delivery against it, the demo contract, and a milestone only
-once (checked via a `findFirst` before creating), so re-running it won't
+first partial delivery against it, the demo contract, two milestones (one
+in progress, one verified with an invoice paid in full against it), and a
+partially-paid materials invoice against the purchase order — only once
+each (checked via a `findFirst` before creating), so re-running it won't
 duplicate the demo transaction chain.
 
 ## What's deliberately not modeled yet
 
-`Invoice`, `Payment`, `Agent`/`Lead`/`Commission`, and any financing/wallet
-tables are out of scope for this MVP (see `ROADMAP.md`). `PurchaseOrder`,
-`Contract`, `Delivery` and `Milestone` are now modeled (see below). The
-schema is structured so the rest can be added without breaking existing
-tables:
+`Agent`/`Lead`/`Commission` and any financing/wallet tables are out of
+scope for this MVP (see `ROADMAP.md`). `PurchaseOrder`, `Contract`,
+`Delivery`, `Milestone`, `Invoice` and `Payment` are now modeled — this MVP
+now covers the full P4 execution phase. The schema is structured so the
+remaining modules can be added without breaking existing tables:
 
-- `Document.type` already includes `INVOICE`, `RECEIPT` for when the
-  invoicing module attaches real records to these document types instead
-  of just a category label. `Document.contractId` / `deliveryId` /
-  `milestoneId` already exist for attaching files to those records once
-  uploads are implemented.
-- `Milestone.paymentAmount` is the natural hook for a future `Invoice` to
-  be raised against a completed, verified milestone.
+- `Document.contractId` / `deliveryId` / `milestoneId` / `invoiceId`
+  already exist for attaching files to those records once uploads are
+  implemented.
+- `Payment.status = RECORDED` rows are the natural input to a future
+  Agent commission calculation or cash-flow analytics module — the ledger
+  already exists, only the reporting layer is missing.
 
 ### Purchase orders
 
@@ -185,3 +196,51 @@ VERIFIED`, with `DELAYED` reachable from `PLANNED`/`IN_PROGRESS` and
 `CANCELLED` from any non-terminal status; `COMPLETED` can also revert to
 `IN_PROGRESS` if verification fails. As with deliveries, only project
 `MANAGER`+ can mark a milestone `VERIFIED`.
+
+### Invoices
+
+`Invoice` names the organization billing (`issuedByOrgId`, required) and
+optionally points at whichever of `PurchaseOrder` / `Contract` / `Milestone`
+it's billing against (all nullable — an invoice can be raised against any
+one of them, or none, e.g. a standalone consultancy fee). `invoiceNumber`
+is the number as it appears on the invoice the issuing organization sent —
+not a TARA-generated number — with `@@unique([projectId, issuedByOrgId,
+invoiceNumber])` so the same organization can't submit the same invoice
+number twice on a project (this is the "duplicate invoice numbers" edge
+case the product brief calls out by name; the API layer turns the
+resulting `P2002` into a specific, actionable `409` message rather than a
+generic one). `total` is always server-computed as `subtotal + taxAmount`.
+
+Status is a closed forward-only state machine
+(`INVOICE_STATUS_TRANSITIONS`): `DRAFT → SUBMITTED → UNDER_REVIEW →
+APPROVED`, with `DISPUTED` reachable from `SUBMITTED`/`UNDER_REVIEW`/
+`APPROVED`/`PARTIALLY_PAID` and resolvable back to `UNDER_REVIEW`.
+**`PARTIALLY_PAID` and `PAID` do not appear in any transition's allowed
+list** — they are unreachable via `PATCH`, by design; only
+`recomputeInvoicePaymentStatus` sets them (see "Payments" below).
+Approving an invoice (`APPROVED`) requires project `MANAGER`+ — it
+authorizes the invoice for payment, the same financial-control significance
+as accepting a quotation or issuing a PO.
+
+### Payments
+
+`Payment` rows are transaction *records* — evidence that a payment was
+made outside TARA (bank transfer, mobile money, cheque, cash), **never a
+claim that TARA itself moved money**. Each carries `payerOrgId` and
+`payeeOrgId` explicitly (the payee is always set server-side from
+`invoice.issuedByOrgId`, never client-supplied, so it can't drift from who
+actually issued the invoice) plus `amount`, `paymentDate`, `paymentMethod`
+(`BANK_TRANSFER` / `MOBILE_MONEY` / `CHEQUE` / `CASH` / `OTHER`) and an
+optional `reference`. Status is just `RECORDED` or `REVERSED` — there is no
+`PATCH` for editing a payment's fields; a mistaken entry is reversed (kept,
+marked `REVERSED`, visible in the payments list) and a corrected one
+recorded separately, so the record never silently loses history. Recording
+or reversing a payment always requires project `MANAGER`+.
+
+After any payment is recorded or reversed,
+`recomputeInvoicePaymentStatus` (`src/lib/invoices.ts`) sums the invoice's
+`RECORDED` (not `REVERSED`) payment amounts and compares them to
+`invoice.total`, moving the invoice from `APPROVED` to `PARTIALLY_PAID` or
+`PAID`. Same shape as `recomputePurchaseOrderDeliveryStatus`: only ever
+moves the invoice *forward*, and only touches invoices already `APPROVED`
+or `PARTIALLY_PAID`.

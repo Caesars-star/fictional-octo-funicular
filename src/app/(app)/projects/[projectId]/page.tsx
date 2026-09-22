@@ -11,28 +11,43 @@ export default async function ProjectOverviewPage({
 }) {
   const { projectId } = await params;
 
-  const [project, boqCount, rfqCount, purchaseOrders, contractCount, openMilestoneCount, upcomingMilestones] =
-    await Promise.all([
-      prisma.project.findUniqueOrThrow({
-        where: { id: projectId },
-        include: { site: true },
-      }),
-      prisma.boq.count({ where: { projectId } }),
-      prisma.rfq.count({ where: { projectId } }),
-      prisma.purchaseOrder.findMany({
-        where: { projectId, status: { notIn: ["CANCELLED"] } },
-        select: { total: true },
-      }),
-      prisma.contract.count({ where: { projectId } }),
-      prisma.milestone.count({ where: { projectId, status: { notIn: ["VERIFIED", "CANCELLED"] } } }),
-      prisma.milestone.findMany({
-        where: { projectId, status: { notIn: ["VERIFIED", "CANCELLED"] } },
-        orderBy: { plannedDate: "asc" },
-        take: 5,
-      }),
-    ]);
+  const [
+    project,
+    boqCount,
+    rfqCount,
+    purchaseOrders,
+    contractCount,
+    openMilestoneCount,
+    upcomingMilestones,
+    recordedPayments,
+    outstandingInvoiceCount,
+  ] = await Promise.all([
+    prisma.project.findUniqueOrThrow({
+      where: { id: projectId },
+      include: { site: true },
+    }),
+    prisma.boq.count({ where: { projectId } }),
+    prisma.rfq.count({ where: { projectId } }),
+    prisma.purchaseOrder.findMany({
+      where: { projectId, status: { notIn: ["CANCELLED"] } },
+      select: { total: true },
+    }),
+    prisma.contract.count({ where: { projectId } }),
+    prisma.milestone.count({ where: { projectId, status: { notIn: ["VERIFIED", "CANCELLED"] } } }),
+    prisma.milestone.findMany({
+      where: { projectId, status: { notIn: ["VERIFIED", "CANCELLED"] } },
+      orderBy: { plannedDate: "asc" },
+      take: 5,
+    }),
+    prisma.payment.findMany({
+      where: { projectId, status: "RECORDED" },
+      select: { amount: true },
+    }),
+    prisma.invoice.count({ where: { projectId, status: { notIn: ["PAID", "DISPUTED"] } } }),
+  ]);
 
   const committedCost = sumDecimal(purchaseOrders.map((po) => po.total));
+  const actualExpenditure = sumDecimal(recordedPayments.map((p) => p.amount));
 
   const stats = [
     { label: "Estimated project value", value: formatMoney(project.estimatedProjectValue?.toString()) },
@@ -41,10 +56,12 @@ export default async function ProjectOverviewPage({
       value: formatMoney(project.estimatedConstructionCost?.toString()),
     },
     { label: "Committed cost (POs)", value: formatMoney(committedCost.toString()) },
+    { label: "Actual expenditure", value: formatMoney(actualExpenditure.toString()) },
     { label: "BOQs", value: boqCount },
     { label: "RFQs", value: rfqCount },
     { label: "Contracts", value: contractCount },
     { label: "Open milestones", value: openMilestoneCount },
+    { label: "Outstanding invoices", value: outstandingInvoiceCount },
   ];
 
   return (

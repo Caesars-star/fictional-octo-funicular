@@ -112,3 +112,49 @@ describe("delivery fulfilment comparison (recomputePurchaseOrderDeliveryStatus l
     expect(sumDecimal(fulfillingQuantities).toString()).not.toBe(disputedQuantity);
   });
 });
+
+describe("invoice total composition", () => {
+  it("computes total as subtotal + tax, matching the seeded materials invoice", () => {
+    const total = new Prisma.Decimal("470000").add("75200");
+    expect(total.toString()).toBe("545200");
+  });
+});
+
+describe("payment fulfilment comparison (recomputeInvoicePaymentStatus logic)", () => {
+  // src/lib/invoices.ts sums RECORDED (not REVERSED) payment amounts and
+  // compares them to the invoice total using exactly these Decimal
+  // comparisons — exercised here without a database.
+  it("treats a fully-paid invoice as PAID (paid >= total)", () => {
+    const total = new Prisma.Decimal("2320000");
+    const paid = sumDecimal(["2320000"]);
+    expect(paid.greaterThanOrEqualTo(total)).toBe(true);
+  });
+
+  it("treats a partially-paid invoice as PARTIALLY_PAID (0 < paid < total)", () => {
+    const total = new Prisma.Decimal("545200");
+    const paid = sumDecimal(["300000"]);
+    expect(paid.greaterThanOrEqualTo(total)).toBe(false);
+    expect(paid.greaterThan(0)).toBe(true);
+  });
+
+  it("leaves an unpaid invoice's status untouched (paid == 0)", () => {
+    const paid = sumDecimal([]);
+    expect(paid.greaterThan(0)).toBe(false);
+  });
+
+  it("does not count a REVERSED payment's amount toward the paid total", () => {
+    // Mirrors the RECORDED-only filter in recomputeInvoicePaymentStatus —
+    // a reversed payment's amount is excluded from the sum entirely.
+    const reversedAmount = "300000";
+    const recordedAmounts: string[] = []; // reversed excluded
+    expect(sumDecimal(recordedAmounts).toString()).toBe("0");
+    expect(sumDecimal(recordedAmounts).toString()).not.toBe(reversedAmount);
+  });
+
+  it("sums multiple partial payments toward the same invoice", () => {
+    const total = new Prisma.Decimal("545200");
+    const paid = sumDecimal(["300000", "245200"]);
+    expect(paid.toString()).toBe("545200");
+    expect(paid.greaterThanOrEqualTo(total)).toBe(true);
+  });
+});

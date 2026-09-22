@@ -96,6 +96,20 @@ never a raw stack trace or database error (see `src/lib/api-error.ts`).
 | `POST` | `/api/projects/:projectId/milestones` | project member | Create a milestone (+ optional `contractId` linking it to a project contract). |
 | `PATCH` | `/api/milestones/:id` | project member (project `MANAGER`+ to set `status: "VERIFIED"`) | Update fields and/or `status` (validated against a closed forward-only transition table). Setting `status: "COMPLETED"` stamps `actualDate` if unset. |
 
+## Invoices
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/projects/:projectId/invoices` | project member | Record an invoice (+ optional `purchaseOrderId`/`contractId`/`milestoneId`). `total` is always server-computed as `subtotal + taxAmount`. `409` if this organization already submitted an invoice with that number on this project. |
+| `PATCH` | `/api/invoices/:id` | project member (project `MANAGER`+ to set `status: "APPROVED"`) | Update `status` (validated against a closed forward-only transition table — `PARTIALLY_PAID`/`PAID` are not settable this way), `dueDate`, or `notes`. |
+
+## Payments
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/invoices/:invoiceId/payments` | project `MANAGER`+ | Record a payment against an `APPROVED`/`PARTIALLY_PAID` invoice. `payeeOrgId` is always set server-side from the invoice's issuer, never client-supplied. Recomputes the invoice's payment status. |
+| `PATCH` | `/api/payments/:id` | project `MANAGER`+ | Reverse a `RECORDED` payment (there is no edit — a wrong entry is reversed and a corrected one recorded separately). Recomputes the invoice's payment status. |
+
 ## Example: creating an RFQ
 
 ```http
@@ -231,3 +245,47 @@ Content-Type: application/json
   "paymentAmount": "4200000"
 }
 ```
+
+## Example: recording an invoice
+
+```http
+POST /api/projects/clx.../invoices
+Content-Type: application/json
+
+{
+  "issuedByOrgId": "clx_org_supplier",
+  "purchaseOrderId": "clx_po_1",
+  "invoiceNumber": "JHS-2026-0458",
+  "subtotal": "470000",
+  "taxAmount": "75200",
+  "dueDate": "2026-10-05",
+  "notes": "Covers the cement and river sand delivered on 18 Sept 2026."
+}
+```
+
+`invoiceNumber` is the number as it appears on the invoice the organization
+sent — not a TARA-generated number. Submitting the same `issuedByOrgId` +
+`invoiceNumber` twice on the same project returns `409`.
+
+## Example: recording a payment
+
+```http
+POST /api/invoices/clx_invoice_1/payments
+Content-Type: application/json
+
+{
+  "payerOrgId": "clx_org_developer",
+  "amount": "300000",
+  "paymentDate": "2026-09-25",
+  "paymentMethod": "MOBILE_MONEY",
+  "reference": "MPESA-QGT4F8K2",
+  "notes": "Partial payment pending final delivery."
+}
+```
+
+Requires project `MANAGER`+ and an invoice already `APPROVED` (or
+`PARTIALLY_PAID`). This is a **transaction record** — evidence that a
+payment happened outside TARA — not a claim that TARA moved money. On
+success, the invoice's payment status is recomputed automatically (see
+`DATABASE.md`); a payment covering the full outstanding balance moves it to
+`PAID`, a smaller one to `PARTIALLY_PAID`.

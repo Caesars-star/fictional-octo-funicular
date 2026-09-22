@@ -1,22 +1,24 @@
 # TARA — Construction Transaction OS
 
 TARA is a Kenya-focused construction-sector economic infrastructure platform. It
-coordinates projects, BOQs, procurement, suppliers, contractors, contracts and
-(in later phases) payments and financing across the construction value chain,
+coordinates projects, BOQs, procurement, suppliers, contractors, contracts,
+payments and (in later phases) financing across the construction value chain,
 turning each transaction into structured, traceable data.
 
 This repository is the **TARA Construction Transaction OS MVP**, covering
-the workflow
+the full P4 execution-phase workflow
 
 ```
 AUTH → ORGANIZATION → PROJECT → BOQ → MATERIAL CATALOG → RFQ → SUPPLIER QUOTATION → COMPARISON
                                                                           ↓
-                                                        ACCEPT → PURCHASE ORDER → DELIVERIES
-                                                        (+ CONTRACTS → MILESTONES, per project)
+                                              ACCEPT → PURCHASE ORDER → DELIVERIES → INVOICE → PAYMENT
+                                              (+ CONTRACTS → MILESTONES → INVOICE → PAYMENT, per project)
 ```
 
-See [ROADMAP.md](./ROADMAP.md) for what's deliberately out of scope for now
-(invoices, payments, financing, GIS, AI) and why.
+Payment records are transaction *evidence* — TARA does not move money (see
+[SECURITY.md](./SECURITY.md#financial-controls)). See
+[ROADMAP.md](./ROADMAP.md) for what's deliberately out of scope for now
+(agents, analytics, financing, GIS, AI) and why.
 
 ## Stack
 
@@ -61,7 +63,9 @@ a demo project ("Thika Residential Development — Demo Project") with a BOQ,
 an RFQ with two supplier quotations ready to compare, one of them accepted
 with a purchase order (`PO-0001`) issued from it and a first partial
 delivery already recorded against it, a sample general contractor
-agreement, and an in-progress milestone tied to it. All seeded accounts
+agreement, an in-progress milestone tied to it, a second verified milestone
+with an invoice paid in full against it, and a materials invoice against
+the purchase order with a partial payment recorded. All seeded accounts
 share the password `TaraDemo2026!`:
 
 | Email | Role |

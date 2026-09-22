@@ -61,6 +61,8 @@ model User {
   createdDeliveries Delivery[]           @relation("DeliveryCreatedBy")
   receivedDeliveries Delivery[]          @relation("DeliveryReceivedBy")
   createdMilestones Milestone[]
+  createdInvoices   Invoice[]
+  recordedPayments  Payment[]
 
   @@index([role])
 }
@@ -114,6 +116,9 @@ model Organization {
   documents   Document[]
   contractParties ContractParty[]
   responsibleMilestones Milestone[]
+  issuedInvoices  Invoice[] @relation("InvoiceIssuedBy")
+  paymentsAsPayer Payment[] @relation("PaymentPayer")
+  paymentsAsPayee Payment[] @relation("PaymentPayee")
 
   @@index([type])
 }
@@ -199,6 +204,8 @@ model Project {
   purchaseOrders PurchaseOrder[]
   contracts Contract[]
   milestones Milestone[]
+  invoices  Invoice[]
+  payments  Payment[]
 
   @@index([organizationId])
   @@index([status])
@@ -299,6 +306,8 @@ model Document {
   delivery       Delivery?      @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
   milestoneId    String?
   milestone      Milestone?     @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  invoiceId      String?
+  invoice        Invoice?       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   type           DocumentType
   fileName       String
   fileUrl        String
@@ -315,6 +324,7 @@ model Document {
   @@index([contractId])
   @@index([deliveryId])
   @@index([milestoneId])
+  @@index([invoiceId])
 }
 
 // ---------------------------------------------------------------------------
@@ -655,6 +665,7 @@ model PurchaseOrder {
 
   items PurchaseOrderItem[]
   deliveries Delivery[]
+  invoices Invoice[]
 
   @@unique([projectId, poNumber])
   @@index([projectId])
@@ -719,6 +730,7 @@ model Contract {
   parties   ContractParty[]
   documents Document[]
   milestones Milestone[]
+  invoices Invoice[]
 
   @@index([projectId])
   @@index([status])
@@ -835,9 +847,112 @@ model Milestone {
   updatedAt        DateTime        @updatedAt
 
   documents Document[]
+  invoices  Invoice[]
 
   @@index([projectId])
   @@index([contractId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// INVOICES
+// An invoice always names the organization billing for the work
+// (issuedByOrg) and may optionally point at whichever of PurchaseOrder /
+// Contract / Milestone it's billing against. PARTIALLY_PAID/PAID are never
+// set directly by a PATCH — only recomputeInvoicePaymentStatus
+// (src/lib/invoices.ts) derives them from recorded Payments, the same
+// shape as recomputePurchaseOrderDeliveryStatus.
+// ---------------------------------------------------------------------------
+
+enum InvoiceStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+  DISPUTED
+}
+
+model Invoice {
+  id              String        @id @default(cuid())
+  projectId       String
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issuedByOrgId   String
+  issuedByOrg     Organization  @relation("InvoiceIssuedBy", fields: [issuedByOrgId], references: [id])
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  contractId      String?
+  contract        Contract?     @relation(fields: [contractId], references: [id])
+  milestoneId     String?
+  milestone       Milestone?    @relation(fields: [milestoneId], references: [id])
+  invoiceNumber   String
+  status          InvoiceStatus @default(DRAFT)
+  dueDate         DateTime?
+  subtotal        Decimal       @db.Decimal(16, 2)
+  taxAmount       Decimal       @db.Decimal(14, 2) @default(0)
+  total           Decimal       @db.Decimal(16, 2)
+  notes           String?
+  createdById     String
+  createdBy       User          @relation(fields: [createdById], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  documents Document[]
+  payments  Payment[]
+
+  @@unique([projectId, issuedByOrgId, invoiceNumber])
+  @@index([projectId])
+  @@index([purchaseOrderId])
+  @@index([contractId])
+  @@index([milestoneId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// PAYMENTS
+// Payment rows are transaction *records* — evidence that a payment was
+// made outside TARA (bank transfer, mobile money, cheque, cash), never a
+// claim that TARA itself moved money. A wrong record is reversed, never
+// edited or deleted, preserving the audit trail.
+// ---------------------------------------------------------------------------
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  MOBILE_MONEY
+  CHEQUE
+  CASH
+  OTHER
+}
+
+enum PaymentStatus {
+  RECORDED
+  REVERSED
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  projectId     String
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invoiceId     String
+  invoice       Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  payerOrgId    String
+  payerOrg      Organization  @relation("PaymentPayer", fields: [payerOrgId], references: [id])
+  payeeOrgId    String
+  payeeOrg      Organization  @relation("PaymentPayee", fields: [payeeOrgId], references: [id])
+  amount        Decimal       @db.Decimal(16, 2)
+  paymentDate   DateTime
+  paymentMethod PaymentMethod
+  reference     String?
+  status        PaymentStatus @default(RECORDED)
+  notes         String?
+  recordedById  String
+  recordedBy    User          @relation(fields: [recordedById], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([projectId])
+  @@index([invoiceId])
   @@index([status])
 }
 

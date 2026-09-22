@@ -91,10 +91,11 @@ Every API route calls one of `requireSessionUser`, `requireOrgAccess`,
 `requireProjectAccess`, `requireBoqAccess`, `requireRfqAccess`,
 `requireSupplierAccess`, `requireQuotationProjectAccess`,
 `requirePurchaseOrderAccess`, `requireContractAccess`,
-`requireDeliveryAccess`, or `requireMilestoneAccess` before touching the
-database — each of the latter resolves up to the owning project and
-delegates to `requireProjectAccess` rather than re-implementing access
-logic (`requireDeliveryAccess`, for instance, resolves through
+`requireDeliveryAccess`, `requireMilestoneAccess`, `requireInvoiceAccess`,
+or `requirePaymentAccess` before touching the database — each of the
+latter resolves up to the owning project and delegates to
+`requireProjectAccess` rather than re-implementing access logic
+(`requireDeliveryAccess`, for instance, resolves through
 `delivery.purchaseOrder.projectId`). These throw `ApiError(401|403|404,
 message)`, which `handleApiError` turns into a safe JSON response — routes
 never leak Prisma error internals to the client (see `SECURITY.md`).
@@ -110,50 +111,67 @@ All monetary values are Postgres `numeric` (via Prisma `Decimal`), never
 `Float`. All money math — BOQ line totals, quotation subtotals/totals — goes
 through `multiplyDecimal` / `sumDecimal`, which wrap `Prisma.Decimal`. API
 routes **recompute** totals server-side from quantity × unit price on every
-write; a client-submitted total is never trusted or stored directly. A
-purchase order is the one place a total is *copied* rather than recomputed
-— it's created from an already-server-computed, `ACCEPTED` quotation, and
-copying (not re-deriving) is what keeps the PO an accurate snapshot of what
-was actually accepted. See `src/lib/money.test.ts` for the exactness tests
-(including the classic `0.1 + 0.2` float-precision case, and the delivery
-fulfilment comparison logic) and the status-transition tests in
+write; a client-submitted total is never trusted or stored directly. An
+`Invoice`'s `total` is likewise always recomputed as `subtotal + taxAmount`
+server-side — an invoice has no line items (real invoices arrive as
+supplier-issued documents stating a subtotal and tax; the receiving side
+records what they say, it doesn't itemize them), but the one number that
+*is* derived is still never trusted from the client.
+
+A purchase order is the one place a total is *copied* rather than
+recomputed — it's created from an already-server-computed, `ACCEPTED`
+quotation, and copying (not re-deriving) is what keeps the PO an accurate
+snapshot of what was actually accepted. `Payment.amount`, by contrast, is
+pure recorded fact — evidence a payment happened outside TARA — and is
+never computed from anything; only the *comparison* against the invoice
+total (to derive `PARTIALLY_PAID`/`PAID`) is computed.
+
+See `src/lib/money.test.ts` for the exactness tests (including the classic
+`0.1 + 0.2` float-precision case, and the delivery/payment fulfilment
+comparison logic) and the status-transition tests in
 `src/lib/validations/*.test.ts`.
 
 ## Status transition architecture
 
-Purchase orders, contracts, deliveries and milestones all use a **closed,
-forward-only status transition table** — `PO_STATUS_TRANSITIONS` /
-`CONTRACT_STATUS_TRANSITIONS` / `DELIVERY_STATUS_TRANSITIONS` /
-`MILESTONE_STATUS_TRANSITIONS` in their respective
-`src/lib/validations/*.ts` files — mapping each status to the set of
-statuses it may legally move to next (e.g. a `DRAFT` PO may become
+Purchase orders, contracts, deliveries, milestones and invoices all use a
+**closed, forward-only status transition table** — `PO_STATUS_TRANSITIONS`
+/ `CONTRACT_STATUS_TRANSITIONS` / `DELIVERY_STATUS_TRANSITIONS` /
+`MILESTONE_STATUS_TRANSITIONS` / `INVOICE_STATUS_TRANSITIONS` in their
+respective `src/lib/validations/*.ts` files — mapping each status to the
+set of statuses it may legally move to next (e.g. a `DRAFT` PO may become
 `ISSUED` or `CANCELLED`, never jump straight to `COMPLETED`). The `PATCH`
 routes for each resource check the requested status against its table
 before writing, returning `400` on an illegal transition. This is the same
 idea as `RfqStatus`/`QuotationStatus` already being closed enums, taken one
 step further: not just *which* values are valid, but *which changes
-between them* are valid. The next state-machine-shaped module (e.g.
-`Invoice`) should follow the same pattern rather than validating
-transitions ad hoc in the route handler.
+between them* are valid.
 
 Two of these tables also gate a status value behind a *role*, not just a
-legal-transition check: moving a `Delivery` or `Milestone` to `VERIFIED`
-requires project `MANAGER`+, while every other transition only requires
-`MEMBER`+. This is the same human-in-the-loop distinction the product
-brief calls for — recording that something happened (a delivery arrived, a
-milestone's work looks done) is a front-line action; confirming it's
-*correct* is a supervisory one, and the two must not collapse into a
+legal-transition check: moving a `Delivery` or `Milestone` to `VERIFIED`,
+or an `Invoice` to `APPROVED`, requires project `MANAGER`+, while every
+other transition only requires `MEMBER`+. This is the same human-in-the-
+loop distinction the product brief calls for — recording that something
+happened (a delivery arrived, a milestone's work looks done, an invoice
+came in) is a front-line action; confirming it's *correct* or authorizing
+it for payment is a supervisory one, and the two must not collapse into a
 single "mark it done" button.
 
-Deliveries add one more piece: **derived status**. A `PurchaseOrder`'s
-`PARTIALLY_DELIVERED`/`COMPLETED` status is never set directly by a client
-— `recomputePurchaseOrderDeliveryStatus` (`src/lib/purchase-orders.ts`)
-derives it from the sum of each `PurchaseOrderItem`'s fulfilling
-(`DELIVERED`/`VERIFIED`, not `DISPUTED`) delivery quantities every time a
-delivery's status changes, and only ever moves the PO forward. A future
-`Invoice`-vs-milestone reconciliation is likely to want the same shape:
-compute the derived state from the underlying event records, don't let a
-client set it directly.
+Deliveries and invoices add one more piece: **derived status**. A
+`PurchaseOrder`'s `PARTIALLY_DELIVERED`/`COMPLETED` status, and an
+`Invoice`'s `PARTIALLY_PAID`/`PAID` status, are never set directly by a
+client — `recomputePurchaseOrderDeliveryStatus`
+(`src/lib/purchase-orders.ts`) and `recomputeInvoicePaymentStatus`
+(`src/lib/invoices.ts`) derive them from the sum of the underlying event
+records (fulfilling delivery quantities; `RECORDED` payment amounts) every
+time a `Delivery`/`Payment` status changes, and only ever move the parent
+record *forward*. Note that `PARTIALLY_PAID`/`PAID` deliberately don't
+appear in `INVOICE_STATUS_TRANSITIONS`'s allowed lists at all — the
+transition table itself documents that these are recompute-only, unlike
+`PARTIALLY_DELIVERED`/`COMPLETED` which do appear in
+`PO_STATUS_TRANSITIONS` (both are still only ever reached via recompute in
+practice, since nothing calls the PATCH route with those values, but the
+invoice table is the stricter of the two designs and the one to copy for
+the next module in this shape).
 
 ## API architecture
 
@@ -182,6 +200,10 @@ list):
 /api/contracts/[contractId]/parties
 /api/projects/[projectId]/milestones
 /api/milestones/[milestoneId]
+/api/projects/[projectId]/invoices
+/api/invoices/[invoiceId]
+/api/invoices/[invoiceId]/payments
+/api/payments/[paymentId]
 /api/quotations/[quotationId]
 /api/catalog/{categories,units,products}
 /api/suppliers/[supplierId]/products

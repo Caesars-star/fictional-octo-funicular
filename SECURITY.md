@@ -41,21 +41,55 @@
   `{ error, issues }` — never reaches Prisma with unvalidated data.
 - Quantities and prices are validated as positive (or non-negative, where
   zero is legitimate — e.g. a supplier discount) `Decimal`-parseable
-  strings. Negative and zero-quantity edge cases are covered by
-  `src/lib/validations/boq.test.ts` and `rfq.test.ts`.
+  strings. Negative and zero-quantity edge cases, and the closed
+  status-transition tables, are covered by `src/lib/validations/*.test.ts`.
 
 ## Data integrity
 
 - All monetary values are Postgres `numeric` via Prisma `Decimal` — never
-  `Float` — and all money math goes through `src/lib/money.ts`. Line totals
-  and quotation totals are **always recomputed server-side** on every
-  write; a client-submitted total is parsed and discarded, never persisted
-  directly.
+  `Float` — and all money math goes through `src/lib/money.ts`. Line totals,
+  quotation totals and invoice totals are **always recomputed server-side**
+  on every write; a client-submitted total is parsed and discarded, never
+  persisted directly.
 - Every significant write (registration, org/project creation, BOQ/RFQ/
-  quotation changes, membership changes, password resets) writes an
+  quotation changes, membership changes, password resets, purchase order/
+  contract/delivery/milestone/invoice/payment changes) writes an
   `AuditLog` row via `src/lib/audit.ts` — actor, action, entity type/id,
   metadata, timestamp. Audit logging failures are caught and logged
   server-side; they never block or roll back the underlying action.
+
+## Financial controls
+
+- **Payment records are not money movement.** A `Payment` row is evidence
+  that a payment happened outside TARA (bank transfer, mobile money,
+  cheque, cash) — recorded after the fact. Nothing in this codebase debits,
+  credits, or moves funds. This is stated in the UI itself (the "record
+  payment" dialog) as well as here, so it's never ambiguous to a user what
+  clicking the button does.
+- **Approval and verification are manager-gated, separately from doing the
+  work.** Accepting a quotation, approving an invoice for payment
+  (`status: "APPROVED"`), and verifying a delivery or milestone
+  (`status: "VERIFIED"`) all require project `MANAGER`+ — distinct from the
+  `MEMBER`+ needed to submit, record, or progress them. A front-line user
+  can log that a delivery arrived or an invoice came in; only a manager can
+  confirm it's correct or authorize payment against it. See "Status
+  transition architecture" in `ARCHITECTURE.md`.
+- **Payments are reversed, never edited or deleted.** There is no `PATCH`
+  for a payment's amount, date, or method — only a `status: RECORDED →
+  REVERSED` transition. A mistaken entry stays visible, marked reversed,
+  and a corrected one is recorded separately, so the financial record never
+  silently loses history (the same "never silently overwrite important
+  historical information" principle the audit log follows).
+- **Derived financial state is never client-settable.** A purchase order's
+  `PARTIALLY_DELIVERED`/`COMPLETED` status and an invoice's
+  `PARTIALLY_PAID`/`PAID` status are computed server-side from the
+  underlying delivery/payment records (`src/lib/purchase-orders.ts`,
+  `src/lib/invoices.ts`) — no API accepts these values directly for either
+  resource.
+- **Invoice numbers are scoped to prevent silent duplicates.** A given
+  organization can't submit two invoices with the same `invoiceNumber` on
+  the same project (`@@unique([projectId, issuedByOrgId, invoiceNumber])`);
+  the attempt returns a specific `409`, not a generic database error.
 
 ## Error handling
 

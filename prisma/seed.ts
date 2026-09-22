@@ -8,6 +8,7 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { recomputePurchaseOrderDeliveryStatus } from "../src/lib/purchase-orders";
+import { recomputeInvoicePaymentStatus } from "../src/lib/invoices";
 
 const prisma = new PrismaClient();
 
@@ -631,6 +632,96 @@ async function main() {
         createdById: pmUser.id,
       },
     });
+
+    // -------------------------------------------------------------------
+    // A second, already-verified milestone with an invoice raised and
+    // paid against it — demonstrating the full
+    // MILESTONE(VERIFIED) -> INVOICE -> PAYMENT -> PAID chain end to end.
+    // -------------------------------------------------------------------
+    const mobilizationMilestone = await prisma.milestone.create({
+      data: {
+        projectId: project.id,
+        contractId: contract.id,
+        name: "Site Mobilization",
+        description: "Site fencing, hoarding, welfare facilities and access road established.",
+        plannedDate: new Date("2026-03-20"),
+        actualDate: new Date("2026-03-22"),
+        percentage: 5,
+        responsibleOrgId: generalContractorOrg.id,
+        paymentAmount: money(2_000_000),
+        status: "VERIFIED",
+        notes: "Verified by the project manager on-site walkthrough.",
+        createdById: pmUser.id,
+      },
+    });
+
+    const mobilizationInvoice = await prisma.invoice.create({
+      data: {
+        projectId: project.id,
+        issuedByOrgId: generalContractorOrg.id,
+        contractId: contract.id,
+        milestoneId: mobilizationMilestone.id,
+        invoiceNumber: "BR-2026-001",
+        status: "APPROVED",
+        dueDate: new Date("2026-04-15"),
+        subtotal: money(2_000_000),
+        taxAmount: money(320_000),
+        total: money(2_320_000),
+        notes: "Site mobilization milestone, per General Contractor Agreement — Phase 1.",
+        createdById: pmUser.id,
+      },
+    });
+    await prisma.payment.create({
+      data: {
+        projectId: project.id,
+        invoiceId: mobilizationInvoice.id,
+        payerOrgId: developerOrg.id,
+        payeeOrgId: generalContractorOrg.id,
+        amount: money(2_320_000),
+        paymentDate: new Date("2026-04-05"),
+        paymentMethod: "BANK_TRANSFER",
+        reference: "TARA-PAY-0001",
+        notes: "Paid in full on approval.",
+        recordedById: pmUser.id,
+      },
+    });
+    await recomputeInvoicePaymentStatus(mobilizationInvoice.id);
+
+    // -------------------------------------------------------------------
+    // A materials invoice against PO-0001, for the batch already
+    // delivered, partially paid — demonstrating PARTIALLY_PAID derived
+    // from a payment less than the invoice total.
+    // -------------------------------------------------------------------
+    const materialsInvoice = await prisma.invoice.create({
+      data: {
+        projectId: project.id,
+        issuedByOrgId: hardwareOrg.id,
+        purchaseOrderId: purchaseOrder.id,
+        invoiceNumber: "JHS-2026-0458",
+        status: "APPROVED",
+        dueDate: new Date("2026-10-05"),
+        subtotal: money(470_000),
+        taxAmount: money(75_200),
+        total: money(545_200),
+        notes: "Covers the cement and river sand delivered on 18 Sept 2026.",
+        createdById: pmUser.id,
+      },
+    });
+    await prisma.payment.create({
+      data: {
+        projectId: project.id,
+        invoiceId: materialsInvoice.id,
+        payerOrgId: developerOrg.id,
+        payeeOrgId: hardwareOrg.id,
+        amount: money(300_000),
+        paymentDate: new Date("2026-09-25"),
+        paymentMethod: "MOBILE_MONEY",
+        reference: "MPESA-QGT4F8K2",
+        notes: "Partial payment pending final delivery of steel and ballast.",
+        recordedById: pmUser.id,
+      },
+    });
+    await recomputeInvoicePaymentStatus(materialsInvoice.id);
   }
 
   console.log("\nSeed complete.");

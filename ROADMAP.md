@@ -42,31 +42,60 @@ RFQ → SUPPLIER QUOTATION → COMPARISON, backed by real PostgreSQL, with:
   forward-only status model (`PLANNED → IN_PROGRESS → COMPLETED →
   VERIFIED`, `DELAYED`/`CANCELLED` off-ramps), `VERIFIED` also gated to
   project `MANAGER`+.
-- Seed data + demo accounts exercising the full chain end-to-end, including
-  an awarded quotation, its purchase order, a first partial delivery
-  against it (demonstrating the PO moving to `PARTIALLY_DELIVERED`), a
-  sample contractor agreement, and an in-progress milestone tied to it.
+- **Invoices**: recorded against a purchase order, contract and/or
+  milestone (all optional, independently), with a project-scoped
+  duplicate-invoice-number guard per issuing organization. `total` is
+  always server-computed as `subtotal + taxAmount`. Closed forward-only
+  status transitions (`DRAFT → SUBMITTED → UNDER_REVIEW → APPROVED`,
+  `DISPUTED` off-ramp resolving back to `UNDER_REVIEW`); `APPROVED`
+  requires project `MANAGER`+. `PARTIALLY_PAID`/`PAID` are deliberately
+  unreachable via direct status update — only payments derive them.
+- **Payments**: transaction *records* — evidence a payment happened
+  outside TARA (bank transfer, mobile money, cheque, cash), never a claim
+  that TARA moved money (see "Regulatory design principle" below). Recorded
+  against an `APPROVED`/`PARTIALLY_PAID` invoice, `MANAGER`+ only, never
+  edited — a mistaken entry is reversed and a corrected one recorded
+  separately. Every payment change recomputes the parent invoice's
+  `PARTIALLY_PAID`/`PAID` status from its `RECORDED` payment total, the
+  same derived-state shape as PO fulfilment from deliveries.
+- Project dashboard now also shows **actual expenditure** (sum of recorded
+  payments) and **outstanding invoices** (count not yet `PAID`/`DISPUTED`),
+  alongside committed cost from purchase orders — the full set of financial
+  fields the product brief calls for on a project dashboard.
+- Seed data + demo accounts exercising the full chain end-to-end: an
+  awarded quotation, its purchase order, a first partial delivery against
+  it (demonstrating the PO moving to `PARTIALLY_DELIVERED`), a sample
+  contractor agreement, an in-progress milestone, a second *verified*
+  milestone with an invoice paid in full against it (demonstrating
+  `VERIFIED → INVOICE → PAYMENT → PAID` end to end), and a materials
+  invoice against the purchase order with a partial payment recorded
+  (demonstrating `PARTIALLY_PAID`).
+
+**P4 (Execution) is now complete**: PROJECT → BOQ → RFQ → QUOTATION →
+PURCHASE ORDER → DELIVERY, and CONTRACT → MILESTONE → INVOICE → PAYMENT,
+both fully modeled and wired end to end.
 
 See `README.md` for demo accounts and `ARCHITECTURE.md`/`DATABASE.md` for
 how it's built.
 
-## Immediate next slice (P4 — Execution, continued)
+## Immediate next slice (P5 — Network)
 
-The natural continuation of the workflow already modeled:
+- **Agents**: leads, activities, verification tasks, commissions. TARA's
+  human field network — recruiting participants, generating leads,
+  performing assigned verification work (e.g. an agent could plausibly be
+  the one who verifies a delivery or milestone on-site, which the RBAC
+  model already supports via project membership — an Agent module mostly
+  needs its own dashboard and lead/commission tracking on top of that).
 
-1. **Invoices** — from POs/contracts/verified milestones, with an approval
-   workflow. `Milestone.paymentAmount` is the natural trigger for raising
-   one once a milestone is `VERIFIED`.
-2. **Payment records** — explicitly labeled as *transaction records*, not a
-   banking/wallet system (see "Regulatory design principle" below).
+## Then (P6 — Intelligence)
 
-## Then (P5 — Network, P6 — Intelligence)
-
-- Agents: leads, activities, verification tasks, commissions.
 - Basic analytics: cost, procurement, payment, progress, supplier/contractor
-  dashboards (this is where `recharts`, already installed, gets used).
-- Document upload/storage (the `Document` model exists; object storage
-  integration doesn't yet).
+  dashboards (this is where `recharts`, already installed, gets used —
+  the underlying data, e.g. `Payment`/`Invoice`/`Delivery` history, already
+  exists to report on).
+- Document upload/storage (the `Document` model exists, including
+  `contractId`/`deliveryId`/`milestoneId`/`invoiceId` attachment points;
+  object storage integration doesn't yet).
 
 ## Explicitly deferred (P7 — future capital, do not build yet)
 
@@ -88,10 +117,11 @@ be built as mocks presented as real:
 
 TARA is currently a technology/coordination platform. It does not accept
 deposits, provide regulated lending, issue securities, or operate payment
-services. When "payments" are modeled (P4), they are **transaction
-records** — evidence that a payment happened — not a claim that TARA moved
-money. Any future regulated financial functionality must go through a
-licensed entity or partner integration, not be fabricated in the app layer.
+services. `Payment` rows are **transaction records** — evidence that a
+payment happened — not a claim that TARA moved money (see "Financial
+controls" in `SECURITY.md`). Any future regulated financial functionality
+must go through a licensed entity or partner integration, not be
+fabricated in the app layer.
 
 ## Known technical debt
 

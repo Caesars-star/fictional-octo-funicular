@@ -150,6 +150,36 @@ export async function requirePurchaseOrderAccess(
   return po;
 }
 
+/** Resolves an Invoice's project and applies the same access rules as requireProjectAccess. */
+export async function requireInvoiceAccess(
+  user: SessionUser,
+  invoiceId: string,
+  opts: { minProjectRole?: ProjectMemberRole } = {},
+) {
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: { projectId: true },
+  });
+  if (!invoice) throw new ApiError(404, "Invoice not found.");
+  await requireProjectAccess(user, invoice.projectId, opts);
+  return invoice;
+}
+
+/** Resolves a Payment's project and applies the same access rules as requireProjectAccess. */
+export async function requirePaymentAccess(
+  user: SessionUser,
+  paymentId: string,
+  opts: { minProjectRole?: ProjectMemberRole } = {},
+) {
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    select: { projectId: true },
+  });
+  if (!payment) throw new ApiError(404, "Payment not found.");
+  await requireProjectAccess(user, payment.projectId, opts);
+  return payment;
+}
+
 /** Resolves a Delivery's project (via its purchase order) and applies requireProjectAccess. */
 export async function requireDeliveryAccess(
   user: SessionUser,
