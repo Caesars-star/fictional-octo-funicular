@@ -1,103 +1,71 @@
-# TARA — Construction Transaction OS
+<img src="https://octodex.github.com/images/welcometocat.png" align="right" height="250px" />
 
-TARA is a Kenya-focused construction-sector economic infrastructure platform. It
-coordinates projects, BOQs, procurement, suppliers, contractors, contracts,
-payments and (in later phases) financing across the construction value chain,
-turning each transaction into structured, traceable data.
+⭐️ Congratulations Caesars-star! ⭐️
 
-This repository is the **TARA Construction Transaction OS MVP**, covering
-the full P4 execution-phase workflow plus the P5 agent network layer
+You completed this exercise! Nice work! 🥳
 
-```
-AUTH → ORGANIZATION → PROJECT → BOQ → MATERIAL CATALOG → RFQ → SUPPLIER QUOTATION → COMPARISON
-                                                                          ↓
-                                              ACCEPT → PURCHASE ORDER → DELIVERIES → INVOICE → PAYMENT
-                                              (+ CONTRACTS → MILESTONES → INVOICE → PAYMENT, per project)
+If you would like to practice again, you can retrace your steps below. Just press the **Start Exercise** button again.
 
-AGENT → LEAD → CONVERTED (oversight-gated) → COMMISSION (created/approved by oversight, never the agent)
-```
+> [!TIP]
+> Mona won't grade you this time! 😉
 
-Payment records are transaction *evidence* — TARA does not move money (see
-[SECURITY.md](./SECURITY.md#financial-controls)). See
-[ROADMAP.md](./ROADMAP.md) for what's deliberately out of scope for now
-(analytics, financing, GIS, AI) and why.
 
-## Stack
+ # Introduction to GitHub
 
-| Layer | Technology |
-| --- | --- |
-| Frontend & backend | Next.js 16 (App Router), TypeScript |
-| UI | Tailwind CSS v4, hand-built shadcn/ui-style components on Radix primitives |
-| Database | PostgreSQL |
-| ORM | Prisma 6 |
-| Validation | Zod (shared client/server schemas) |
-| Auth | Auth.js (NextAuth) v5, Credentials provider, bcrypt password hashing |
-| Testing | Vitest (unit), Playwright (browser smoke) |
+<!-- ![](https://github.com/Caesars-star/fictional-octo-funicular/actions/workflows/0-start-exercise.yml/badge.svg) -->
+![](https://github.com/Caesars-star/fictional-octo-funicular/actions/workflows/1-create-a-branch.yml/badge.svg)
+![](https://github.com/Caesars-star/fictional-octo-funicular/actions/workflows/2-commit-a-file.yml/badge.svg)
+![](https://github.com/Caesars-star/fictional-octo-funicular/actions/workflows/3-open-a-pull-request.yml/badge.svg)
+![](https://github.com/Caesars-star/fictional-octo-funicular/actions/workflows/4-merge-your-pull-request.yml/badge.svg)
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the reasoning behind these
-choices and the module boundaries.
+_Get started using GitHub in less than an hour._
 
-## Getting started
+## Welcome
 
-### Prerequisites
+People use GitHub to build some of the most advanced technologies in the world. Whether you’re visualizing data or building a new game, there’s a whole community and set of tools on GitHub that can help you do it even better. GitHub Skills’ “Introduction to GitHub” exercise guides you through everything you need to start contributing in less than an hour.
 
-- Node.js 20+
-- A PostgreSQL 16 server (local install or `docker compose up -d` if Docker
-  is available in your environment)
+- **Who is this for**: New developers, new GitHub users, and students.
+- **What you'll learn**: We'll introduce repositories, branches, commits, and pull requests.
+- **What you'll build**: We'll make a short Markdown file you can use as your [profile README](https://docs.github.com/account-and-profile/setting-up-and-managing-your-github-profile/customizing-your-profile/managing-your-profile-readme).
+- **Prerequisites**: None. This exercise is a great introduction for your first day on GitHub.
+- **How long**: This exercise takes less than one hour to complete.
 
-### Setup
+In this exercise, you will:
 
-```bash
-npm install
-cp .env.example .env        # fill in DATABASE_URL / AUTH_SECRET
-npm run db:migrate          # create the schema
-npm run db:seed             # load demo data (see below)
-npm run dev                 # http://localhost:3000
-```
+1. Create a branch
+2. Commit a file
+3. Open a pull request
+4. Merge your pull request
 
-Full details, including how to run without Docker, are in
-[DEVELOPMENT.md](./DEVELOPMENT.md).
+### How to start this exercise
 
-### Demo accounts
+1. Right-click **Copy Exercise** and open the link in a new tab.
 
-`npm run db:seed` creates a demo organization ("TARA Demo Development Ltd"),
-a demo project ("Thika Residential Development — Demo Project") with a BOQ,
-an RFQ with two supplier quotations ready to compare, one of them accepted
-with a purchase order (`PO-0001`) issued from it and a first partial
-delivery already recorded against it, a sample general contractor
-agreement, an in-progress milestone tied to it, a second verified milestone
-with an invoice paid in full against it, and a materials invoice against
-the purchase order with a partial payment recorded. It also seeds a field
-agent with a converted lead, a lead still in the pipeline, logged
-activities, and an approved commission. All seeded accounts share the
-password `TaraDemo2026!`:
+   <a id="copy-exercise">
+      <img src="https://img.shields.io/badge/📠_Copy_Exercise-AAA" height="25pt"/>
+   </a>
 
-| Email | Role |
-| --- | --- |
-| `developer@tara.dev` | DEVELOPER — owns the demo organization |
-| `pm@tara.dev` | PROJECT_MANAGER — manages the demo project |
-| `supplier-cement@tara.dev` | SUPPLIER — Rift Valley Cement Suppliers Ltd |
-| `supplier-hardware@tara.dev` | SUPPLIER — Jenga Hardware & Steel Supplies |
-| `contractor-general@tara.dev` | CONTRACTOR — BuildRight General Contractors |
-| `agent@tara.dev` | AGENT — TARA Field Agents Network |
-| `agent-manager@tara.dev` | ORGANIZATION_ADMIN — oversees TARA Field Agents Network |
+2. In the new tab, most of the prompts will automatically fill in for you.
+   - For owner, choose your personal account or an organization to host the repository.
+   - We recommend creating a public repository, as private repositories will [use Actions minutes](https://docs.github.chttps://github.com/Caesars-star/fictional-octo-funicular/billing/managing-billing-for-github-actions/about-billing-for-github-actions).
+   - Scroll down and click the **Create repository** button at the bottom of the form.
 
-This is clearly-labelled fictional demo data, not real companies or
-transactions.
+3. After your new repository is created, wait about 20 seconds for the exercise to be prepared and buttons updated. You will continue working from your copy of the exercise.
+   - The **Copy Exercise** button will deactivate, changing to gray.
+   - The **Start Exercise** button will activate, changing to green.
+   - You will likely need to refresh the page.
 
-## Documentation
+4. Click **Start Exercise**. Follow the step-by-step instructions and feedback will be provided as you progress.
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — system, module and API architecture
-- [DATABASE.md](./DATABASE.md) — schema, entity relationships, migrations
-- [API.md](./API.md) — REST endpoint reference
-- [DEVELOPMENT.md](./DEVELOPMENT.md) — local setup, scripts, testing
-- [SECURITY.md](./SECURITY.md) — auth, authorization, data handling
-- [ROADMAP.md](./ROADMAP.md) — what's built, what's next, what's deliberately deferred
+   <a id="start-exercise" href="https://github.com/Caesars-star/fictional-octo-funicular/issues/1">
+      <img src="https://img.shields.io/badge/🚀_Start_Exercise-008000" height="25pt"/>
+   </a>
 
-## Repository note
+> [!IMPORTANT]
+> The **Start Exercise** button will activate after copying the repository. You will probably need to refresh the page.
 
-This repository was originally created from GitHub's "Introduction to
-GitHub" Skills exercise. The leftover exercise files
-(`.github/workflows/*-exercise.yml`, `.github/steps/`, `PROFILE.md`) are
-unrelated to TARA and harmless to leave in place, but can be deleted if you'd
-like a clean tree.
+---
+
+Get help: [Post in our discussion board](https://github.com/orgs/skills/discussions/categories/introduction-to-github) &bull; [Review the GitHub status page](https://www.githubstatus.com/)
+
+&copy; 2024 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
