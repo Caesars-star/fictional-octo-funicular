@@ -75,19 +75,33 @@ RFQ → SUPPLIER QUOTATION → COMPARISON, backed by real PostgreSQL, with:
 PURCHASE ORDER → DELIVERY, and CONTRACT → MILESTONE → INVOICE → PAYMENT,
 both fully modeled and wired end to end.
 
+- **Agents**: TARA's human field network — recruiting participants,
+  generating leads, and performing on-site work (site visits, calls,
+  recruitment, verification). An `Agent` profile is auto-created at
+  registration for `AGENT`-role signups, is not project-scoped (access
+  resolves to the agent's own user/org, not project membership), and gets
+  its own self-service `/agent-portal` dashboard (leads, activities,
+  commissions) plus an admin `/agents` directory and detail page for
+  oversight users. `Lead` tracks prospects through a closed pipeline
+  (`NEW → CONTACTED → QUALIFIED → CONVERTED`, `LOST` off-ramp);
+  `AgentActivity` is an append-only work log; `Commission` is a standalone
+  financial record (`PENDING → APPROVED → PAID`, `CANCELLED` off-ramp).
+  **The module's core security property**: an agent can never create,
+  approve, or convert their way into their own commission — every
+  commission mutation and a lead's `CONVERTED` transition require
+  `requireAgentOversight`, which explicitly excludes the acting agent's
+  own `userId` regardless of their organization role (see "Financial
+  controls" in `SECURITY.md`). Seed data demonstrates both the converted
+  and in-pipeline lead states, and an approved-then-paid commission,
+  recorded by a distinct oversight account (`agent-manager@tara.dev`) —
+  never by the agent (`agent@tara.dev`) themselves.
+
+**P5 (Network) is now complete.**
+
 See `README.md` for demo accounts and `ARCHITECTURE.md`/`DATABASE.md` for
 how it's built.
 
-## Immediate next slice (P5 — Network)
-
-- **Agents**: leads, activities, verification tasks, commissions. TARA's
-  human field network — recruiting participants, generating leads,
-  performing assigned verification work (e.g. an agent could plausibly be
-  the one who verifies a delivery or milestone on-site, which the RBAC
-  model already supports via project membership — an Agent module mostly
-  needs its own dashboard and lead/commission tracking on top of that).
-
-## Then (P6 — Intelligence)
+## Immediate next slice (P6 — Intelligence)
 
 - Basic analytics: cost, procurement, payment, progress, supplier/contractor
   dashboards (this is where `recharts`, already installed, gets used —

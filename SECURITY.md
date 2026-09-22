@@ -90,6 +90,21 @@
   organization can't submit two invoices with the same `invoiceNumber` on
   the same project (`@@unique([projectId, issuedByOrgId, invoiceNumber])`);
   the attempt returns a specific `409`, not a generic database error.
+- **An agent can never authorize their own financial or verification
+  actions.** `requireAgentOversight` (`src/lib/rbac.ts`) explicitly checks
+  and rejects the acting user against the target agent's own `userId`
+  *before* checking organization role — so an agent who is `OWNER` of
+  their own (possibly single-member) organization still cannot approve
+  their own work. This gates every `Commission` mutation (creation,
+  approval, marking paid, cancellation) and a `Lead`'s `CONVERTED`
+  transition, the event a commission is earned from. This is the direct
+  implementation of the product brief's "an agent must never modify
+  sensitive financial/project information without authorization"
+  requirement, and is covered by a live end-to-end check (the agent's own
+  attempt is rejected with a `403` and the specific message "Agents cannot
+  authorize this action on their own account.", then a second, distinct
+  user with oversight of the agent's organization completes the same
+  action successfully).
 
 ## Error handling
 

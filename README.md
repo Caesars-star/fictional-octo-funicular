@@ -6,19 +6,21 @@ payments and (in later phases) financing across the construction value chain,
 turning each transaction into structured, traceable data.
 
 This repository is the **TARA Construction Transaction OS MVP**, covering
-the full P4 execution-phase workflow
+the full P4 execution-phase workflow plus the P5 agent network layer
 
 ```
 AUTH → ORGANIZATION → PROJECT → BOQ → MATERIAL CATALOG → RFQ → SUPPLIER QUOTATION → COMPARISON
                                                                           ↓
                                               ACCEPT → PURCHASE ORDER → DELIVERIES → INVOICE → PAYMENT
                                               (+ CONTRACTS → MILESTONES → INVOICE → PAYMENT, per project)
+
+AGENT → LEAD → CONVERTED (oversight-gated) → COMMISSION (created/approved by oversight, never the agent)
 ```
 
 Payment records are transaction *evidence* — TARA does not move money (see
 [SECURITY.md](./SECURITY.md#financial-controls)). See
 [ROADMAP.md](./ROADMAP.md) for what's deliberately out of scope for now
-(agents, analytics, financing, GIS, AI) and why.
+(analytics, financing, GIS, AI) and why.
 
 ## Stack
 
@@ -65,8 +67,10 @@ with a purchase order (`PO-0001`) issued from it and a first partial
 delivery already recorded against it, a sample general contractor
 agreement, an in-progress milestone tied to it, a second verified milestone
 with an invoice paid in full against it, and a materials invoice against
-the purchase order with a partial payment recorded. All seeded accounts
-share the password `TaraDemo2026!`:
+the purchase order with a partial payment recorded. It also seeds a field
+agent with a converted lead, a lead still in the pipeline, logged
+activities, and an approved commission. All seeded accounts share the
+password `TaraDemo2026!`:
 
 | Email | Role |
 | --- | --- |
@@ -75,6 +79,8 @@ share the password `TaraDemo2026!`:
 | `supplier-cement@tara.dev` | SUPPLIER — Rift Valley Cement Suppliers Ltd |
 | `supplier-hardware@tara.dev` | SUPPLIER — Jenga Hardware & Steel Supplies |
 | `contractor-general@tara.dev` | CONTRACTOR — BuildRight General Contractors |
+| `agent@tara.dev` | AGENT — TARA Field Agents Network |
+| `agent-manager@tara.dev` | ORGANIZATION_ADMIN — oversees TARA Field Agents Network |
 
 This is clearly-labelled fictional demo data, not real companies or
 transactions.

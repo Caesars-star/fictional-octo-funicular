@@ -13,10 +13,16 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Organizations", href: "/organizations" },
   { label: "Material catalog", href: "/catalog" },
   { label: "Suppliers", href: "/suppliers" },
+  { label: "Agents", href: "/agents" },
   {
     label: "My quotations",
     href: "/supplier-portal",
     roles: ["SUPPLIER", "PLATFORM_ADMIN"],
+  },
+  {
+    label: "Agent portal",
+    href: "/agent-portal",
+    roles: ["AGENT", "PLATFORM_ADMIN"],
   },
 ];
 

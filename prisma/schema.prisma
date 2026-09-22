@@ -48,33 +48,36 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  memberships       OrganizationMembership[]
-  projectMemberships ProjectMember[]
-  createdProjects   Project[]                @relation("ProjectCreatedBy")
-  uploadedDocuments Document[]
-  auditLogs         AuditLog[]
-  createdBoqs       Boq[]
-  createdRfqs       Rfq[]
-  passwordResetTokens PasswordResetToken[]
-  createdPurchaseOrders PurchaseOrder[]
-  createdContracts  Contract[]
-  createdDeliveries Delivery[]           @relation("DeliveryCreatedBy")
-  receivedDeliveries Delivery[]          @relation("DeliveryReceivedBy")
-  createdMilestones Milestone[]
-  createdInvoices   Invoice[]
-  recordedPayments  Payment[]
+  memberships            OrganizationMembership[]
+  projectMemberships     ProjectMember[]
+  createdProjects        Project[]                @relation("ProjectCreatedBy")
+  uploadedDocuments      Document[]
+  auditLogs              AuditLog[]
+  createdBoqs            Boq[]
+  createdRfqs            Rfq[]
+  passwordResetTokens    PasswordResetToken[]
+  createdPurchaseOrders  PurchaseOrder[]
+  createdContracts       Contract[]
+  createdDeliveries      Delivery[]               @relation("DeliveryCreatedBy")
+  receivedDeliveries     Delivery[]               @relation("DeliveryReceivedBy")
+  createdMilestones      Milestone[]
+  createdInvoices        Invoice[]
+  recordedPayments       Payment[]
+  agentProfile           Agent?
+  createdAgentActivities AgentActivity[]
+  createdCommissions     Commission[]
 
   @@index([role])
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
+  id        String    @id @default(cuid())
+  token     String    @unique
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
 }
@@ -97,7 +100,7 @@ enum VerificationStatus {
 }
 
 model Organization {
-  id                 String              @id @default(cuid())
+  id                 String             @id @default(cuid())
   name               String
   type               OrganizationType
   description        String?
@@ -105,20 +108,23 @@ model Organization {
   phone              String?
   email              String?
   address            String?
-  verificationStatus VerificationStatus  @default(UNVERIFIED)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
-  memberships OrganizationMembership[]
-  projects    Project[]
-  supplier    Supplier?
-  contractor  Contractor?
-  documents   Document[]
-  contractParties ContractParty[]
+  memberships           OrganizationMembership[]
+  projects              Project[]
+  supplier              Supplier?
+  contractor            Contractor?
+  documents             Document[]
+  contractParties       ContractParty[]
   responsibleMilestones Milestone[]
-  issuedInvoices  Invoice[] @relation("InvoiceIssuedBy")
-  paymentsAsPayer Payment[] @relation("PaymentPayer")
-  paymentsAsPayee Payment[] @relation("PaymentPayee")
+  issuedInvoices        Invoice[]                @relation("InvoiceIssuedBy")
+  paymentsAsPayer       Payment[]                @relation("PaymentPayer")
+  paymentsAsPayee       Payment[]                @relation("PaymentPayee")
+  agents                Agent[]
+  convertedLeads        Lead[]
+  agentActivities       AgentActivity[]
 
   @@index([type])
 }
@@ -136,15 +142,15 @@ enum MembershipStatus {
 }
 
 model OrganizationMembership {
-  id             String            @id @default(cuid())
+  id             String           @id @default(cuid())
   organizationId String
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId         String
-  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role           OrgMemberRole     @default(MEMBER)
-  status         MembershipStatus  @default(ACTIVE)
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           OrgMemberRole    @default(MEMBER)
+  status         MembershipStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@unique([organizationId, userId])
   @@index([userId])
@@ -177,35 +183,37 @@ enum ProjectStatus {
 
 model Project {
   id                        String        @id @default(cuid())
-  organizationId             String
-  organization                Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name                       String
-  type                       ProjectType
-  description                String?
-  location                   String?
-  latitude                   Decimal?      @db.Decimal(9, 6)
-  longitude                  Decimal?      @db.Decimal(9, 6)
-  landReference              String?
-  estimatedProjectValue      Decimal?      @db.Decimal(16, 2)
-  estimatedConstructionCost  Decimal?      @db.Decimal(16, 2)
-  startDate                  DateTime?
-  expectedCompletion         DateTime?
-  status                     ProjectStatus @default(CONCEPT)
-  createdById                String
-  createdBy                  User          @relation("ProjectCreatedBy", fields: [createdById], references: [id])
-  createdAt                  DateTime      @default(now())
-  updatedAt                  DateTime      @updatedAt
+  organizationId            String
+  organization              Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name                      String
+  type                      ProjectType
+  description               String?
+  location                  String?
+  latitude                  Decimal?      @db.Decimal(9, 6)
+  longitude                 Decimal?      @db.Decimal(9, 6)
+  landReference             String?
+  estimatedProjectValue     Decimal?      @db.Decimal(16, 2)
+  estimatedConstructionCost Decimal?      @db.Decimal(16, 2)
+  startDate                 DateTime?
+  expectedCompletion        DateTime?
+  status                    ProjectStatus @default(CONCEPT)
+  createdById               String
+  createdBy                 User          @relation("ProjectCreatedBy", fields: [createdById], references: [id])
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @updatedAt
 
-  members   ProjectMember[]
-  site      Site?
-  documents Document[]
-  boqs      Boq[]
-  rfqs      Rfq[]
-  purchaseOrders PurchaseOrder[]
-  contracts Contract[]
-  milestones Milestone[]
-  invoices  Invoice[]
-  payments  Payment[]
+  members         ProjectMember[]
+  site            Site?
+  documents       Document[]
+  boqs            Boq[]
+  rfqs            Rfq[]
+  purchaseOrders  PurchaseOrder[]
+  contracts       Contract[]
+  milestones      Milestone[]
+  invoices        Invoice[]
+  payments        Payment[]
+  agentActivities AgentActivity[]
+  commissions     Commission[]
 
   @@index([organizationId])
   @@index([status])
@@ -251,22 +259,22 @@ enum PlanningStatus {
 }
 
 model Site {
-  id               String          @id @default(cuid())
-  projectId        String          @unique
-  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id               String         @id @default(cuid())
+  projectId        String         @unique
+  project          Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   parcelReference  String?
   location         String?
-  latitude         Decimal?        @db.Decimal(9, 6)
-  longitude        Decimal?        @db.Decimal(9, 6)
-  areaValue        Decimal?        @db.Decimal(12, 2)
+  latitude         Decimal?       @db.Decimal(9, 6)
+  longitude        Decimal?       @db.Decimal(9, 6)
+  areaValue        Decimal?       @db.Decimal(12, 2)
   areaUnit         String?
-  tenureType       TenureType      @default(UNKNOWN)
+  tenureType       TenureType     @default(UNKNOWN)
   ownershipInfo    String?
-  planningStatus   PlanningStatus  @default(NOT_APPLIED)
+  planningStatus   PlanningStatus @default(NOT_APPLIED)
   developmentNotes String?
   constraints      String?
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -339,15 +347,15 @@ enum BoqStatus {
 }
 
 model Boq {
-  id             String    @id @default(cuid())
-  projectId      String
-  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  title          String
-  status         BoqStatus @default(DRAFT)
-  createdById    String
-  createdBy      User      @relation(fields: [createdById], references: [id])
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  status      BoqStatus @default(DRAFT)
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   sections BoqSection[]
   items    BoqItem[]
@@ -421,25 +429,25 @@ model ProductCategory {
 }
 
 model Unit {
-  id           String    @id @default(cuid())
-  name         String    @unique
-  abbreviation String    @unique
-  createdAt    DateTime  @default(now())
+  id           String   @id @default(cuid())
+  name         String   @unique
+  abbreviation String   @unique
+  createdAt    DateTime @default(now())
 
   products Product[]
 }
 
 model Product {
-  id           String          @id @default(cuid())
-  name         String
-  categoryId   String
-  category     ProductCategory @relation(fields: [categoryId], references: [id])
+  id            String          @id @default(cuid())
+  name          String
+  categoryId    String
+  category      ProductCategory @relation(fields: [categoryId], references: [id])
   defaultUnitId String
-  defaultUnit  Unit            @relation(fields: [defaultUnitId], references: [id])
-  description  String?
-  sku          String?         @unique
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  defaultUnit   Unit            @relation(fields: [defaultUnitId], references: [id])
+  description   String?
+  sku           String?         @unique
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   supplierProducts SupplierProduct[]
   boqItems         BoqItem[]
@@ -452,22 +460,22 @@ model Product {
 // ---------------------------------------------------------------------------
 
 model Supplier {
-  id                 String              @id @default(cuid())
-  organizationId     String              @unique
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                 String             @id @default(cuid())
+  organizationId     String             @unique
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contactName        String?
   contactPhone       String?
   contactEmail       String?
   location           String?
   serviceArea        String?
-  verificationStatus VerificationStatus  @default(UNVERIFIED)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
-  products     SupplierProduct[]
-  boqItems     BoqItem[]
-  rfqSuppliers RfqSupplier[]
-  quotations   Quotation[]
+  products       SupplierProduct[]
+  boqItems       BoqItem[]
+  rfqSuppliers   RfqSupplier[]
+  quotations     Quotation[]
   purchaseOrders PurchaseOrder[]
 }
 
@@ -486,16 +494,16 @@ model SupplierProduct {
 }
 
 model Contractor {
-  id                 String              @id @default(cuid())
-  organizationId     String              @unique
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                 String             @id @default(cuid())
+  organizationId     String             @unique
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   specialties        String?
   location           String?
   serviceArea        String?
   registrationInfo   String?
-  verificationStatus VerificationStatus  @default(UNVERIFIED)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -529,9 +537,9 @@ model Rfq {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  items       RfqItem[]
+  items        RfqItem[]
   rfqSuppliers RfqSupplier[]
-  quotations  Quotation[]
+  quotations   Quotation[]
 
   @@index([projectId])
   @@index([status])
@@ -590,16 +598,16 @@ model Quotation {
   supplier     Supplier        @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   status       QuotationStatus @default(DRAFT)
   validUntil   DateTime?
-  deliveryCost Decimal         @db.Decimal(14, 2) @default(0)
-  taxAmount    Decimal         @db.Decimal(14, 2) @default(0)
-  subtotal     Decimal         @db.Decimal(16, 2) @default(0)
-  total        Decimal         @db.Decimal(16, 2) @default(0)
+  deliveryCost Decimal         @default(0) @db.Decimal(14, 2)
+  taxAmount    Decimal         @default(0) @db.Decimal(14, 2)
+  subtotal     Decimal         @default(0) @db.Decimal(16, 2)
+  total        Decimal         @default(0) @db.Decimal(16, 2)
   notes        String?
   submittedAt  DateTime?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
-  items QuotationItem[]
+  items         QuotationItem[]
   purchaseOrder PurchaseOrder?
 
   @@unique([rfqId, supplierId])
@@ -642,30 +650,30 @@ enum PoStatus {
 }
 
 model PurchaseOrder {
-  id                  String    @id @default(cuid())
-  projectId           String
-  project             Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  quotationId         String    @unique
-  quotation           Quotation @relation(fields: [quotationId], references: [id])
-  supplierId          String
-  supplier            Supplier  @relation(fields: [supplierId], references: [id])
-  poNumber            String
-  status              PoStatus  @default(DRAFT)
-  issueDate           DateTime?
+  id                   String    @id @default(cuid())
+  projectId            String
+  project              Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quotationId          String    @unique
+  quotation            Quotation @relation(fields: [quotationId], references: [id])
+  supplierId           String
+  supplier             Supplier  @relation(fields: [supplierId], references: [id])
+  poNumber             String
+  status               PoStatus  @default(DRAFT)
+  issueDate            DateTime?
   expectedDeliveryDate DateTime?
-  terms               String?
-  deliveryCost        Decimal   @db.Decimal(14, 2) @default(0)
-  taxAmount           Decimal   @db.Decimal(14, 2) @default(0)
-  subtotal            Decimal   @db.Decimal(16, 2)
-  total               Decimal   @db.Decimal(16, 2)
-  createdById         String
-  createdBy           User      @relation(fields: [createdById], references: [id])
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  terms                String?
+  deliveryCost         Decimal   @default(0) @db.Decimal(14, 2)
+  taxAmount            Decimal   @default(0) @db.Decimal(14, 2)
+  subtotal             Decimal   @db.Decimal(16, 2)
+  total                Decimal   @db.Decimal(16, 2)
+  createdById          String
+  createdBy            User      @relation(fields: [createdById], references: [id])
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  items PurchaseOrderItem[]
+  items      PurchaseOrderItem[]
   deliveries Delivery[]
-  invoices Invoice[]
+  invoices   Invoice[]
 
   @@unique([projectId, poNumber])
   @@index([projectId])
@@ -727,10 +735,10 @@ model Contract {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  parties   ContractParty[]
-  documents Document[]
+  parties    ContractParty[]
+  documents  Document[]
   milestones Milestone[]
-  invoices Invoice[]
+  invoices   Invoice[]
 
   @@index([projectId])
   @@index([status])
@@ -875,28 +883,28 @@ enum InvoiceStatus {
 }
 
 model Invoice {
-  id              String        @id @default(cuid())
+  id              String         @id @default(cuid())
   projectId       String
-  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project         Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   issuedByOrgId   String
-  issuedByOrg     Organization  @relation("InvoiceIssuedBy", fields: [issuedByOrgId], references: [id])
+  issuedByOrg     Organization   @relation("InvoiceIssuedBy", fields: [issuedByOrgId], references: [id])
   purchaseOrderId String?
   purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
   contractId      String?
-  contract        Contract?     @relation(fields: [contractId], references: [id])
+  contract        Contract?      @relation(fields: [contractId], references: [id])
   milestoneId     String?
-  milestone       Milestone?    @relation(fields: [milestoneId], references: [id])
+  milestone       Milestone?     @relation(fields: [milestoneId], references: [id])
   invoiceNumber   String
-  status          InvoiceStatus @default(DRAFT)
+  status          InvoiceStatus  @default(DRAFT)
   dueDate         DateTime?
-  subtotal        Decimal       @db.Decimal(16, 2)
-  taxAmount       Decimal       @db.Decimal(14, 2) @default(0)
-  total           Decimal       @db.Decimal(16, 2)
+  subtotal        Decimal        @db.Decimal(16, 2)
+  taxAmount       Decimal        @default(0) @db.Decimal(14, 2)
+  total           Decimal        @db.Decimal(16, 2)
   notes           String?
   createdById     String
-  createdBy       User          @relation(fields: [createdById], references: [id])
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdBy       User           @relation(fields: [createdById], references: [id])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   documents Document[]
   payments  Payment[]
@@ -953,6 +961,160 @@ model Payment {
 
   @@index([projectId])
   @@index([invoiceId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// AGENTS
+// TARA's human field network: recruiting participants, generating leads,
+// and performing assigned verification/site work. Agents are deliberately
+// NOT project-scoped like the P4 modules above — access resolves to the
+// agent's own user/org, not a project membership. Commission approval is
+// restricted to org oversight (OWNER/ADMIN of the agent's org) or a
+// platform admin — never the agent themselves. See `requireAgentAccess`
+// vs `requireAgentOversight` in `src/lib/rbac.ts`.
+// ---------------------------------------------------------------------------
+
+enum AgentStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model Agent {
+  id             String        @id @default(cuid())
+  userId         String        @unique
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  status         AgentStatus   @default(ACTIVE)
+  phone          String?
+  region         String?
+  commissionRate Decimal?      @db.Decimal(5, 2)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  leads       Lead[]
+  activities  AgentActivity[]
+  commissions Commission[]
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+enum LeadType {
+  DEVELOPER
+  SUPPLIER
+  CONTRACTOR
+  CONSULTANT
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  LOST
+}
+
+model Lead {
+  id                      String        @id @default(cuid())
+  agentId                 String
+  agent                   Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  type                    LeadType
+  organizationName        String
+  contactName             String?
+  contactPhone            String?
+  contactEmail            String?
+  notes                   String?
+  status                  LeadStatus    @default(NEW)
+  convertedOrganizationId String?
+  convertedOrganization   Organization? @relation(fields: [convertedOrganizationId], references: [id])
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  activities  AgentActivity[]
+  commissions Commission[]
+
+  @@index([agentId])
+  @@index([status])
+}
+
+enum AgentActivityType {
+  LEAD_GENERATED
+  ORGANIZATION_RECRUITED
+  PROJECT_RECRUITED
+  SUPPLIER_RECRUITED
+  VERIFICATION_COMPLETED
+  SITE_VISIT
+  CALL
+  OTHER
+}
+
+// Append-only — no PATCH/DELETE route. A record of what an agent did,
+// not a mutable task list.
+model AgentActivity {
+  id                    String            @id @default(cuid())
+  agentId               String
+  agent                 Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  type                  AgentActivityType
+  description           String
+  relatedProjectId      String?
+  relatedProject        Project?          @relation(fields: [relatedProjectId], references: [id])
+  relatedOrganizationId String?
+  relatedOrganization   Organization?     @relation(fields: [relatedOrganizationId], references: [id])
+  relatedLeadId         String?
+  relatedLead           Lead?             @relation(fields: [relatedLeadId], references: [id])
+  occurredAt            DateTime          @default(now())
+  createdById           String
+  createdBy             User              @relation(fields: [createdById], references: [id])
+  createdAt             DateTime          @default(now())
+
+  @@index([agentId])
+  @@index([relatedProjectId])
+  @@index([relatedOrganizationId])
+}
+
+enum CommissionSourceType {
+  LEAD_CONVERSION
+  ORGANIZATION_RECRUITMENT
+  PROJECT_RECRUITMENT
+  SUPPLIER_RECRUITMENT
+  OTHER
+}
+
+enum CommissionStatus {
+  PENDING
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+// Deliberately NOT derived from Payment/Invoice records — a standalone
+// status machine (PENDING -> APPROVED -> PAID, CANCELLED off-ramp) tracked
+// on its own, same as every other financial record in this codebase: a
+// record of what's owed, not a claim that TARA moved the money.
+model Commission {
+  id          String               @id @default(cuid())
+  agentId     String
+  agent       Agent                @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  leadId      String?
+  lead        Lead?                @relation(fields: [leadId], references: [id])
+  projectId   String?
+  project     Project?             @relation(fields: [projectId], references: [id])
+  sourceType  CommissionSourceType
+  description String?
+  amount      Decimal              @db.Decimal(16, 2)
+  status      CommissionStatus     @default(PENDING)
+  createdById String
+  createdBy   User                 @relation(fields: [createdById], references: [id])
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([agentId])
+  @@index([projectId])
   @@index([status])
 }
 

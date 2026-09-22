@@ -22,9 +22,10 @@ PostgreSQL, managed by Prisma. Full schema: [`prisma/schema.prisma`](./prisma/sc
   `DeliveryItem`, `OrganizationMembership`, `ProjectMember`) cascade-delete
   with their parent. `Payment` cascades from its `Invoice` for the same
   reason, but is never itself deleted by the application — a wrong payment
-  is reversed (see "Payments" below), not removed. Entities that represent
-  independent economic actors (`Organization`, `Supplier`, `Product`) do
-  not cascade from a project.
+  is reversed (see "Payments" below), not removed. `Lead`, `AgentActivity`
+  and `Commission` all cascade from their `Agent` the same way. Entities
+  that represent independent economic actors (`Organization`, `Supplier`,
+  `Product`) do not cascade from a project.
 
 ## Entity map (MVP scope)
 
@@ -58,6 +59,12 @@ User ──< OrganizationMembership >── Organization ──< Project
 Product >── ProductCategory (self-referential hierarchy)
 Product >── Unit
 Product ──< SupplierProduct >── Supplier   (supplier price list)
+
+User (1:1) ── Agent ── Organization (nullable, the agent's own org)
+                │
+                ├──< Lead ── Organization (convertedOrganizationId, nullable)
+                ├──< AgentActivity >── Project / Organization / Lead (all nullable)
+                └──< Commission >── Lead (nullable) / Project (nullable)
 
 AuditLog ── actor: User (nullable — system-initiated actions have no actor)
 PasswordResetToken ── User
@@ -118,22 +125,28 @@ first partial delivery against it, the demo contract, two milestones (one
 in progress, one verified with an invoice paid in full against it), and a
 partially-paid materials invoice against the purchase order — only once
 each (checked via a `findFirst` before creating), so re-running it won't
-duplicate the demo transaction chain.
+duplicate the demo transaction chain. The agent network's demo data (a
+converted lead, a lead still in the pipeline, two logged activities, one
+approved-then-paid commission) is guarded by its own independent
+`findFirst` check, so it seeds correctly even against a database that
+already had the rest of the chain from before the Agents module existed.
 
 ## What's deliberately not modeled yet
 
-`Agent`/`Lead`/`Commission` and any financing/wallet tables are out of
-scope for this MVP (see `ROADMAP.md`). `PurchaseOrder`, `Contract`,
-`Delivery`, `Milestone`, `Invoice` and `Payment` are now modeled — this MVP
-now covers the full P4 execution phase. The schema is structured so the
-remaining modules can be added without breaking existing tables:
+Financing/wallet tables (`TARA Capital`, `TARA Wallet`, `TARA Notes`) are
+out of scope for this MVP (see `ROADMAP.md`). `PurchaseOrder`, `Contract`,
+`Delivery`, `Milestone`, `Invoice`, `Payment`, `Agent`, `Lead`,
+`AgentActivity` and `Commission` are now all modeled — this MVP now covers
+the full P4 execution phase plus the P5 agent network. The schema is
+structured so the remaining modules can be added without breaking existing
+tables:
 
 - `Document.contractId` / `deliveryId` / `milestoneId` / `invoiceId`
   already exist for attaching files to those records once uploads are
   implemented.
 - `Payment.status = RECORDED` rows are the natural input to a future
-  Agent commission calculation or cash-flow analytics module — the ledger
-  already exists, only the reporting layer is missing.
+  cash-flow analytics module — the ledger already exists, only the
+  reporting layer is missing.
 
 ### Purchase orders
 
@@ -244,3 +257,33 @@ After any payment is recorded or reversed,
 `PAID`. Same shape as `recomputePurchaseOrderDeliveryStatus`: only ever
 moves the invoice *forward*, and only touches invoices already `APPROVED`
 or `PARTIALLY_PAID`.
+
+### Agents
+
+`Agent` is a 1:1 profile on top of a `User` with role `AGENT`
+(`Agent.userId @unique`), auto-created at registration
+(`src/app/api/auth/register/route.ts`), and optionally belongs to an
+`Organization` (`organizationId` nullable — an independent agent has none).
+It is **not** project-scoped: unlike every P4 module above, an agent's
+access is resolved to their own `userId`/`organizationId`, not to a
+project (see "Agent access" in `ARCHITECTURE.md`).
+
+- **`Lead`** is a prospect the agent is working — a developer, supplier,
+  contractor or consultant not yet on TARA. Status is a closed
+  forward-only state machine (`LEAD_STATUS_TRANSITIONS`): `NEW →
+  CONTACTED → QUALIFIED → CONVERTED`, with `LOST` reachable from any
+  non-terminal status. `CONVERTED` (and the `convertedOrganizationId` link
+  it sets) requires `requireAgentOversight` — never the agent themselves —
+  since it's the event a commission is earned from.
+- **`AgentActivity`** is an append-only log entry (site visit, call,
+  recruitment, verification) with no `PATCH`/`DELETE` route, optionally
+  tagged to a `Project`, `Organization` and/or `Lead` (all nullable, and
+  independent of each other).
+- **`Commission`** is a standalone financial record — deliberately **not**
+  derived from `Payment`/`Invoice`, unlike `PurchaseOrder`/`Invoice`
+  fulfilment above. Status is a closed forward-only state machine
+  (`COMMISSION_STATUS_TRANSITIONS`): `PENDING → APPROVED → PAID`, with
+  `CANCELLED` reachable from `PENDING`/`APPROVED`. Every transition,
+  including the initial creation, requires `requireAgentOversight`: an
+  agent can create, approve, or mark paid a commission for another agent
+  they oversee, but never their own.

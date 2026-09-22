@@ -12,7 +12,7 @@ never a raw stack trace or database error (see `src/lib/api-error.ts`).
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/api/auth/register` | Register a user + create their organization (+ Supplier/Contractor record if applicable). |
+| `POST` | `/api/auth/register` | Register a user + create their organization (+ Supplier/Contractor/Agent record if applicable). |
 | `POST` | `/api/auth/request-password-reset` | Generate a reset token. Always returns a generic success message (no email enumeration). |
 | `POST` | `/api/auth/reset-password` | Consume a reset token, set a new password. |
 | `*` | `/api/auth/[...nextauth]` | Auth.js sign-in/sign-out/session endpoints (Credentials provider). |
@@ -109,6 +109,23 @@ never a raw stack trace or database error (see `src/lib/api-error.ts`).
 | --- | --- | --- | --- |
 | `POST` | `/api/invoices/:invoiceId/payments` | project `MANAGER`+ | Record a payment against an `APPROVED`/`PARTIALLY_PAID` invoice. `payeeOrgId` is always set server-side from the invoice's issuer, never client-supplied. Recomputes the invoice's payment status. |
 | `PATCH` | `/api/payments/:id` | project `MANAGER`+ | Reverse a `RECORDED` payment (there is no edit — a wrong entry is reversed and a corrected one recorded separately). Recomputes the invoice's payment status. |
+
+## Agents
+
+Agents are not project-scoped — "auth" below means `requireAgentAccess`
+(the agent themselves, an `OWNER`/`ADMIN` of the agent's organization, or a
+platform admin) and "oversight" means `requireAgentOversight`, the same
+check with the agent's own account explicitly excluded. See "Agent access"
+in `ARCHITECTURE.md`.
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `PATCH` | `/api/agents/:id` | auth (oversight to set `status`/`commissionRate`) | Update an agent's profile. `phone`/`region`/`notes` are self-editable; `status`/`commissionRate` require oversight. |
+| `POST` | `/api/agents/:id/leads` | auth | Record a lead. |
+| `PATCH` | `/api/leads/:id` | auth (oversight to set `status: "CONVERTED"`) | Update a lead (validated against a closed forward-only transition table). Converting a lead — the event a commission is earned from — requires oversight. |
+| `POST` | `/api/agents/:id/activities` | auth | Log an activity. Append-only — there is no `PATCH`/`DELETE`. |
+| `POST` | `/api/agents/:id/commissions` | oversight | Create a commission for an agent. Never available to the agent themselves. |
+| `PATCH` | `/api/commissions/:id` | oversight | Update `status` (validated against a closed forward-only transition table). Never available to the agent themselves, for any transition. |
 
 ## Example: creating an RFQ
 
@@ -289,3 +306,73 @@ payment happened outside TARA — not a claim that TARA moved money. On
 success, the invoice's payment status is recomputed automatically (see
 `DATABASE.md`); a payment covering the full outstanding balance moves it to
 `PAID`, a smaller one to `PARTIALLY_PAID`.
+
+## Example: recording a lead
+
+```http
+POST /api/agents/clx_agent_1/leads
+Content-Type: application/json
+
+{
+  "type": "CONTRACTOR",
+  "organizationName": "BuildRight General Contractors",
+  "contactName": "Peter Kariuki",
+  "contactPhone": "+254722000111",
+  "notes": "Recruited via the agent's Thika contractor referral network."
+}
+```
+
+## Example: converting a lead
+
+```http
+PATCH /api/leads/clx_lead_1
+Content-Type: application/json
+
+{ "status": "CONVERTED", "convertedOrganizationId": "clx_org_contractor" }
+```
+
+Returns `403` if the caller is the agent themselves — converting a lead
+requires oversight (an `OWNER`/`ADMIN` of the agent's organization, or a
+platform admin), never the agent's own account, however that account is
+authorized elsewhere. `convertedOrganizationId` can only be set together
+with `status: "CONVERTED"`.
+
+## Example: recording a commission
+
+```http
+POST /api/agents/clx_agent_1/commissions
+Content-Type: application/json
+
+{
+  "sourceType": "ORGANIZATION_RECRUITMENT",
+  "leadId": "clx_lead_1",
+  "amount": "150000",
+  "description": "Recruitment commission for onboarding BuildRight General Contractors."
+}
+```
+
+Returns `403` if the caller is the agent themselves. `amount` is a string
+to preserve decimal precision over the wire, the same as `unitPrice`
+elsewhere in this API.
+
+## Example: approving and paying a commission
+
+```http
+PATCH /api/commissions/clx_commission_1
+Content-Type: application/json
+
+{ "status": "APPROVED" }
+```
+
+Then, once ready to pay:
+
+```http
+PATCH /api/commissions/clx_commission_1
+Content-Type: application/json
+
+{ "status": "PAID" }
+```
+
+Both require oversight and a legal transition from the commission's
+current status (`PENDING → APPROVED → PAID`, `CANCELLED` reachable from
+either non-terminal status) — see the transition table in `DATABASE.md`.

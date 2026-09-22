@@ -105,6 +105,27 @@ variants and call `notFound()` on failure, so unauthorized access to
 `/organizations/[id]` or `/projects/[id]` renders a 404 rather than leaking
 existence via a 403.
 
+### Agent access: a third axis (`requireAgentAccess` vs `requireAgentOversight`)
+
+Agents aren't project-scoped like every other P4 module, so they don't fit
+the "resolve up to project" pattern above. Instead, `requireAgentAccess`
+and `requireLeadAccess`/`requireCommissionAccess` (which resolve to it)
+grant access to three groups: platform admins, the agent themselves (self-
+service), or `OWNER`/`ADMIN` members of the agent's own organization
+(oversight).
+
+`requireAgentOversight` (and the `requireCommissionOversight` /
+lead-conversion path that resolve to it) is the same check **with the
+agent's own `userId` explicitly excluded** — not just left out of the
+allow-list, but checked and rejected before the org-role check runs, so an
+agent who happens to be `OWNER` of their own single-member organization
+still cannot self-authorize. This is the module's core security invariant,
+directly from the product brief: *an agent must never modify sensitive
+financial/project information without authorization*. It gates commission
+creation, every commission status change, and a lead's `CONVERTED`
+transition (the event that earns a commission) — see "Financial controls"
+in `SECURITY.md`.
+
 ## Financial calculation architecture (`src/lib/money.ts`)
 
 All monetary values are Postgres `numeric` (via Prisma `Decimal`), never
@@ -133,11 +154,13 @@ comparison logic) and the status-transition tests in
 
 ## Status transition architecture
 
-Purchase orders, contracts, deliveries, milestones and invoices all use a
-**closed, forward-only status transition table** — `PO_STATUS_TRANSITIONS`
-/ `CONTRACT_STATUS_TRANSITIONS` / `DELIVERY_STATUS_TRANSITIONS` /
-`MILESTONE_STATUS_TRANSITIONS` / `INVOICE_STATUS_TRANSITIONS` in their
-respective `src/lib/validations/*.ts` files — mapping each status to the
+Purchase orders, contracts, deliveries, milestones, invoices, leads and
+commissions all use a **closed, forward-only status transition table** —
+`PO_STATUS_TRANSITIONS` / `CONTRACT_STATUS_TRANSITIONS` /
+`DELIVERY_STATUS_TRANSITIONS` / `MILESTONE_STATUS_TRANSITIONS` /
+`INVOICE_STATUS_TRANSITIONS` / `LEAD_STATUS_TRANSITIONS` /
+`COMMISSION_STATUS_TRANSITIONS` in their respective
+`src/lib/validations/*.ts` files — mapping each status to the
 set of statuses it may legally move to next (e.g. a `DRAFT` PO may become
 `ISSUED` or `CANCELLED`, never jump straight to `COMPLETED`). The `PATCH`
 routes for each resource check the requested status against its table
@@ -146,15 +169,18 @@ idea as `RfqStatus`/`QuotationStatus` already being closed enums, taken one
 step further: not just *which* values are valid, but *which changes
 between them* are valid.
 
-Two of these tables also gate a status value behind a *role*, not just a
-legal-transition check: moving a `Delivery` or `Milestone` to `VERIFIED`,
+Several of these tables also gate a status value behind a *role*, not just
+a legal-transition check: moving a `Delivery` or `Milestone` to `VERIFIED`,
 or an `Invoice` to `APPROVED`, requires project `MANAGER`+, while every
 other transition only requires `MEMBER`+. This is the same human-in-the-
 loop distinction the product brief calls for — recording that something
 happened (a delivery arrived, a milestone's work looks done, an invoice
 came in) is a front-line action; confirming it's *correct* or authorizing
 it for payment is a supervisory one, and the two must not collapse into a
-single "mark it done" button.
+single "mark it done" button. A `Lead`'s `CONVERTED` transition and every
+`Commission` status transition follow the same shape, gated to
+`requireAgentOversight` instead of a project role — see "Agent access"
+above.
 
 Deliveries and invoices add one more piece: **derived status**. A
 `PurchaseOrder`'s `PARTIALLY_DELIVERED`/`COMPLETED` status, and an
@@ -207,6 +233,12 @@ list):
 /api/quotations/[quotationId]
 /api/catalog/{categories,units,products}
 /api/suppliers/[supplierId]/products
+/api/agents/[agentId]
+/api/agents/[agentId]/leads
+/api/agents/[agentId]/activities
+/api/agents/[agentId]/commissions
+/api/leads/[leadId]
+/api/commissions/[commissionId]
 ```
 
 Every route: parses/validates the body with a Zod schema from
@@ -214,6 +246,10 @@ Every route: parses/validates the body with a Zod schema from
 Prisma write (in a `$transaction` when multiple tables must stay
 consistent), writes an `AuditLog` row via `logAudit()`, and returns JSON.
 Errors always go through `handleApiError`.
+
+`AgentActivity` has no `PATCH`/`DELETE` route at all — it's an append-only
+log of what an agent did (a site visit, a recruitment, a verification),
+not a mutable task list, so `POST` is the only write it exposes.
 
 ## Frontend architecture
 

@@ -250,6 +250,116 @@ export async function canAccessProject(user: SessionUser, projectId: string): Pr
   }
 }
 
+/**
+ * Confirms the user may view/act on an agent's own profile: platform admins,
+ * the agent themselves, or OWNER/ADMIN members of the agent's organization
+ * (oversight). Distinct from requireAgentOversight below, which excludes the
+ * agent themselves — this one is for read/self-service access.
+ */
+export async function requireAgentAccess(user: SessionUser, agentId: string) {
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: { id: true, userId: true, organizationId: true },
+  });
+  if (!agent) throw new ApiError(404, "Agent not found.");
+  if (isPlatformAdmin(user.role)) return agent;
+  if (agent.userId === user.id) return agent;
+  if (agent.organizationId) {
+    const membership = await getOrgMembership(user.id, agent.organizationId);
+    if (
+      membership?.status === "ACTIVE" &&
+      (membership.role === "OWNER" || membership.role === "ADMIN")
+    ) {
+      return agent;
+    }
+  }
+  throw new ApiError(403, "You do not have access to this agent.");
+}
+
+/**
+ * Confirms the caller has *oversight* authority over an agent — platform
+ * admins or OWNER/ADMIN members of the agent's organization — and
+ * explicitly excludes the agent acting on their own account. Required for
+ * financially sensitive actions (commission approval, status changes, lead
+ * conversion) so an agent can never authorize their own commissions or
+ * self-certify their own work. See "Financial controls" in SECURITY.md.
+ */
+export async function requireAgentOversight(user: SessionUser, agentId: string) {
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: { id: true, userId: true, organizationId: true },
+  });
+  if (!agent) throw new ApiError(404, "Agent not found.");
+  if (isPlatformAdmin(user.role)) return agent;
+  if (agent.userId === user.id) {
+    throw new ApiError(403, "Agents cannot authorize this action on their own account.");
+  }
+  if (agent.organizationId) {
+    const membership = await getOrgMembership(user.id, agent.organizationId);
+    if (
+      membership?.status === "ACTIVE" &&
+      (membership.role === "OWNER" || membership.role === "ADMIN")
+    ) {
+      return agent;
+    }
+  }
+  throw new ApiError(403, "You do not have permission to perform this action.");
+}
+
+/** Resolves a Lead's agent and applies the same access rules as requireAgentAccess. */
+export async function requireLeadAccess(user: SessionUser, leadId: string) {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { agentId: true } });
+  if (!lead) throw new ApiError(404, "Lead not found.");
+  await requireAgentAccess(user, lead.agentId);
+  return lead;
+}
+
+/** Page-safe (non-throwing) variant of requireAgentAccess, for server components. */
+export async function canAccessAgent(user: SessionUser, agentId: string): Promise<boolean> {
+  try {
+    await requireAgentAccess(user, agentId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Page-safe (non-throwing) variant of requireAgentOversight, for server components. */
+export async function canOverseeAgent(user: SessionUser, agentId: string): Promise<boolean> {
+  try {
+    await requireAgentOversight(user, agentId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Resolves a Commission's agent and applies the same access rules as requireAgentAccess. */
+export async function requireCommissionAccess(user: SessionUser, commissionId: string) {
+  const commission = await prisma.commission.findUnique({
+    where: { id: commissionId },
+    select: { agentId: true },
+  });
+  if (!commission) throw new ApiError(404, "Commission not found.");
+  await requireAgentAccess(user, commission.agentId);
+  return commission;
+}
+
+/**
+ * Resolves a Commission's agent and applies requireAgentOversight — every
+ * commission mutation (create, approve, mark paid, cancel) goes through
+ * this, so an agent can never create or approve their own commission.
+ */
+export async function requireCommissionOversight(user: SessionUser, commissionId: string) {
+  const commission = await prisma.commission.findUnique({
+    where: { id: commissionId },
+    select: { agentId: true },
+  });
+  if (!commission) throw new ApiError(404, "Commission not found.");
+  await requireAgentOversight(user, commission.agentId);
+  return commission;
+}
+
 /** Confirms the caller controls the given supplier organization (owns quotations, etc). */
 export async function requireSupplierAccess(user: SessionUser, supplierId: string) {
   const supplier = await prisma.supplier.findUnique({

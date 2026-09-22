@@ -73,6 +73,11 @@ export async function POST(request: NextRequest) {
           data: { organizationId: organization.id },
         });
       }
+      if (data.role === "AGENT") {
+        await tx.agent.create({
+          data: { userId: user.id, organizationId: organization.id },
+        });
+      }
 
       return { user, organization };
     });

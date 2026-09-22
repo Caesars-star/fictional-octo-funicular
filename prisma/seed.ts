@@ -95,7 +95,7 @@ async function main() {
   // ---------------------------------------------------------------------
   async function upsertOrgWithUser(params: {
     orgName: string;
-    orgType: "DEVELOPER" | "SUPPLIER" | "CONTRACTOR" | "PLATFORM";
+    orgType: "DEVELOPER" | "SUPPLIER" | "CONTRACTOR" | "PLATFORM" | "AGENT_NETWORK";
     email: string;
     firstName: string;
     lastName: string;
@@ -104,7 +104,8 @@ async function main() {
       | "DEVELOPER"
       | "PROJECT_MANAGER"
       | "SUPPLIER"
-      | "CONTRACTOR";
+      | "CONTRACTOR"
+      | "AGENT";
   }) {
     const org = await prisma.organization.upsert({
       where: { id: (await prisma.organization.findFirst({ where: { name: params.orgName } }))?.id ?? "__none__" },
@@ -264,6 +265,56 @@ async function main() {
     firstName: "Samuel",
     lastName: "Kiptoo",
     role: "CONTRACTOR",
+  });
+
+  // ---------------------------------------------------------------------
+  // Agent network: a field agent who recruits participants, generates
+  // leads and performs on-site verification work. See Module 17 (Agent
+  // System) in the product brief and "Financial controls" in SECURITY.md
+  // for why commission/status changes are oversight-gated away from the
+  // agent's own account.
+  // ---------------------------------------------------------------------
+  const { org: agentNetworkOrg, user: agentUser } = await upsertOrgWithUser({
+    orgName: "TARA Field Agents Network",
+    orgType: "AGENT_NETWORK",
+    email: "agent@tara.dev",
+    firstName: "Wanjiru",
+    lastName: "Kamau",
+    role: "AGENT",
+  });
+  const agent = await prisma.agent.upsert({
+    where: { userId: agentUser.id },
+    create: {
+      userId: agentUser.id,
+      organizationId: agentNetworkOrg.id,
+      status: "ACTIVE",
+      phone: "+254712345678",
+      region: "Kiambu County",
+      commissionRate: money(5),
+      notes: "Covers Thika, Ruiru and surrounding Kiambu County developments.",
+    },
+    update: {},
+  });
+
+  // A network manager — an ADMIN member of the agent's organization, but
+  // not an agent themselves — demonstrates the requireAgentOversight
+  // "converted/approved by someone other than the agent" path live, since
+  // Wanjiru (the agent) is otherwise the only member of her own org.
+  const agentManagerUser = await prisma.user.upsert({
+    where: { email: "agent-manager@tara.dev" },
+    create: {
+      email: "agent-manager@tara.dev",
+      passwordHash,
+      firstName: "Daniel",
+      lastName: "Mutua",
+      role: "ORGANIZATION_ADMIN",
+    },
+    update: {},
+  });
+  await prisma.organizationMembership.upsert({
+    where: { organizationId_userId: { organizationId: agentNetworkOrg.id, userId: agentManagerUser.id } },
+    create: { organizationId: agentNetworkOrg.id, userId: agentManagerUser.id, role: "ADMIN" },
+    update: {},
   });
 
   // ---------------------------------------------------------------------
@@ -724,6 +775,80 @@ async function main() {
     await recomputeInvoicePaymentStatus(materialsInvoice.id);
   }
 
+  // ---------------------------------------------------------------------
+  // Agent network activity against the demo project: a converted lead (the
+  // general contractor, recruited by the field agent), a qualified lead
+  // still in progress, on-site activity logging, and an approved
+  // commission — demonstrating LEAD -> CONVERTED -> COMMISSION end to end,
+  // and a second lead mid-pipeline to exercise the status controls live in
+  // the demo. Guarded independently of the BOQ/RFQ/PO chain above so it
+  // still seeds on a database that already has that chain from before the
+  // Agents module existed.
+  // ---------------------------------------------------------------------
+  const existingContractorLead = await prisma.lead.findFirst({
+    where: { agentId: agent.id, organizationName: "BuildRight General Contractors" },
+  });
+  if (!existingContractorLead) {
+    const contractorLead = await prisma.lead.create({
+      data: {
+        agentId: agent.id,
+        type: "CONTRACTOR",
+        organizationName: "BuildRight General Contractors",
+        contactName: "Peter Kariuki",
+        contactPhone: "+254722000111",
+        notes: "Recruited via the agent's Thika contractor referral network.",
+        status: "CONVERTED",
+        convertedOrganizationId: generalContractorOrg.id,
+      },
+    });
+    await prisma.lead.create({
+      data: {
+        agentId: agent.id,
+        type: "DEVELOPER",
+        organizationName: "Uzima Homes Ltd",
+        contactName: "Rose Achieng",
+        contactPhone: "+254733000222",
+        notes: "Prospective developer for a Ruiru townhouse project — awaiting site visit.",
+        status: "QUALIFIED",
+      },
+    });
+    await prisma.agentActivity.createMany({
+      data: [
+        {
+          agentId: agent.id,
+          type: "ORGANIZATION_RECRUITED",
+          description:
+            "Recruited BuildRight General Contractors onto TARA and introduced them to the Thika Residential Development project.",
+          relatedProjectId: project.id,
+          relatedOrganizationId: generalContractorOrg.id,
+          relatedLeadId: contractorLead.id,
+          occurredAt: new Date("2026-02-20"),
+          createdById: agentUser.id,
+        },
+        {
+          agentId: agent.id,
+          type: "SITE_VISIT",
+          description: "Site visit to verify foundation progress ahead of the milestone sign-off.",
+          relatedProjectId: project.id,
+          occurredAt: new Date("2026-09-18"),
+          createdById: agentUser.id,
+        },
+      ],
+    });
+    await prisma.commission.create({
+      data: {
+        agentId: agent.id,
+        leadId: contractorLead.id,
+        projectId: project.id,
+        sourceType: "ORGANIZATION_RECRUITMENT",
+        description: "Recruitment commission for onboarding BuildRight General Contractors.",
+        amount: money(150_000),
+        status: "APPROVED",
+        createdById: developerUser.id,
+      },
+    });
+  }
+
   console.log("\nSeed complete.");
   console.log(`Demo password for all seeded accounts: ${DEMO_PASSWORD}\n`);
   console.log("Accounts:");
@@ -734,6 +859,8 @@ async function main() {
   console.log("  supplier-electrical@tara.dev(SUPPLIER, SparkTech Electrical Supplies)");
   console.log("  supplier-plumbing@tara.dev  (SUPPLIER, FlowWorks Plumbing Supplies)");
   console.log("  contractor-general@tara.dev (CONTRACTOR, BuildRight General Contractors)");
+  console.log("  agent@tara.dev              (AGENT, TARA Field Agents Network)");
+  console.log("  agent-manager@tara.dev      (ORGANIZATION_ADMIN, oversees TARA Field Agents Network)");
 }
 
 main()

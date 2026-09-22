@@ -12,6 +12,7 @@ const POSITIVE = new Set([
   "AWARDED",
   "OPERATIONAL",
   "OPEN",
+  "CONVERTED",
 ]);
 const WARNING = new Set([
   "PENDING",
@@ -26,6 +27,9 @@ const WARNING = new Set([
   "VIEWED",
   "PROCUREMENT",
   "CONSTRUCTION",
+  "NEW",
+  "CONTACTED",
+  "QUALIFIED",
 ]);
 const NEGATIVE = new Set([
   "REJECTED",
@@ -35,6 +39,7 @@ const NEGATIVE = new Set([
   "EXPIRED",
   "DECLINED",
   "REMOVED",
+  "LOST",
 ]);
 
 function variantFor(status: string): BadgeProps["variant"] {
