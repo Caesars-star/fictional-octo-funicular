@@ -50,6 +50,14 @@ export function handleApiError(error: unknown): NextResponse {
     return NextResponse.json({ error: "Unable to complete this request." }, { status: 500 });
   }
 
+  if (error instanceof Prisma.PrismaClientInitializationError) {
+    console.error("[api] database unavailable", error.errorCode, error.message);
+    return NextResponse.json(
+      { error: "The service is temporarily unavailable. Please try again shortly." },
+      { status: 503 },
+    );
+  }
+
   console.error("[api] unhandled error", error);
   return NextResponse.json({ error: "An unexpected error occurred." }, { status: 500 });
 }
